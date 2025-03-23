@@ -87,28 +87,38 @@ class MarkovChain:
 
     def _tokenize(self, text):
         """
-        Tokenizes the input text by removing punctuation, numbers, and splitting it into words.
+        Tokenizes input text by removing punctuation, numeric characters, and splitting it into words.
 
-        This method processes the input text to prepare it for training or generation. It removes
-        all punctuation and numeric characters, replaces newlines with spaces, and splits the text
-        into individual words.
+        This method processes the input text to prepare it for further analysis or training. It removes
+        all punctuation and numeric characters, leaving only alphabetic characters and spaces. The cleaned
+        text is then split into individual words (tokens), and any empty strings resulting from the split
+        operation are filtered out.
 
         Args:
             text (str): The input text to be tokenized.
 
         Returns:
-            list: A list of words (tokens) extracted from the input text.
+            list: A list of tokens (words) extracted from the input text.
+
+        Example:
+            >>> markov_chain = MarkovChain()
+            >>> markov_chain._tokenize("Hello, world! 123")
+            ['Hello', 'world']
 
         Notes:
-            - Punctuation and numbers are removed using `str.maketrans` and `str.translate`.
-            - Newlines are replaced with spaces to ensure consistent tokenization.
-            - The resulting text is split into words using the `split` method.
+            - Punctuation and numeric characters are removed using a generator expression.
+            - The `split()` method is used to split the cleaned text into words.
+            - Empty strings are filtered out using a list comprehension.
+
+        Limitations:
+            - This method assumes that the input text is a single string.
+            - It does not handle special cases like non-ASCII characters or text with mixed encodings.
         """
-        return (
-            text.translate(str.maketrans("", "", punctuation + "1234567890"))
-            .replace("\n", " ")
-            .split(" ")
-        )
+        # Remove punctuation and numeric characters
+        text = ''.join(char for char in text if char.isalpha() or char.isspace())
+        # Split into words and filter out empty strings
+        tokens = [word for word in text.split() if word]
+        return tokens
     
     def _train(self, text):
         """
@@ -244,41 +254,14 @@ class MarkovChain:
                 text += self._read_pd_csv(csv_file_path, header=csv_header)
             self._train(text)
             return self
-        
-def predict_next():
+
+def predict_next(user_input=None):
     """
     Trains the Markov Chain model and generates text based on user input.
-
-    This function creates an instance of the `MarkovChain` class, trains the model using the 
-    `_train_model` method with predefined CSV file paths, and generates a sequence of text 
-    based on a user-provided prompt.
-
-    Steps:
-        1. Create an instance of the `MarkovChain` class.
-        2. Train the model using the `_train_model` method.
-        3. Prompt the user for input text.
-        4. Generate a sequence of text using the `_generate` method.
-
-    Args:
-        None
-
-    Returns:
-        None
-
-    Notes:
-        - The `_train_model` method reads and processes text data from multiple CSV files.
-        - The `_generate` method generates a sequence of words based on the trained Markov Chain graph.
-        - The user is prompted to enter a starting prompt for text generation.
-
-    Example:
-        >>> predict_next()
-        Enter a prompt: This is
-        The predicted sentence is the following: 
-        This is a simple example of text generation
     """
     model = MarkovChain()
     trained_model = model._train_model()
-    prompt = input("Enter a prompt: ")
-    print("The predicted sentence is the following: \n", trained_model._generate(prompt, length=10))
+    if user_input is None:
+        user_input = input("Enter a prompt: ")
+    print(trained_model._generate(user_input, length=10))
 
-predict_next()

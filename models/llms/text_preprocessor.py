@@ -399,8 +399,24 @@ class TextPreprocessor:
         return pattern.sub(lambda x: abbreviations[x.group()], text)
 
     def detect_language(self, text):
-        """Detects the language of the text."""
-        return detect(text)
+        """
+        Detects the language of the text.
+
+        Args:
+            text (str): The input text.
+
+        Returns:
+            str: The detected language code (e.g., 'en', 'fr').
+
+        Raises:
+            ValueError: If the text is empty or language detection fails.
+        """
+        if not text.strip():
+            raise ValueError("Input text is empty.")
+        try:
+            return detect(text)
+        except Exception:
+            return "unknown"  # Fallback for cases where detection fails
 
     def encode_text(self, text, encoding='utf-8'):
         """Encodes text to the specified encoding."""
