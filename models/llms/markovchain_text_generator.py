@@ -53,6 +53,11 @@ from string import punctuation
 # This simplifies the process of appending new words to the graph without needing to check for key existence.import random
 from collections import defaultdict
 
+# The `pandas` library is imported as `pd` to provide data manipulation and analysis tools.
+# It is used in this script to read CSV files and handle data in a structured format (DataFrame).
+# Specifically, `pandas.read_csv` is used to load CSV data, and `pandas.DataFrame` is used to create and manipulate tabular data.
+import pandas as pd
+
 class MarkovChain:
     def __init__(self):
         """
@@ -200,11 +205,38 @@ def read_csv(file_path):
         >>> print(content)
         "Row 1 content\nRow 2 content\n..."
     """
-    print("Input file path", file_path)
     with open(file_path, 'r') as file:
         return file.read()
     
+
+def read_pd_csv(csv_file_path, header=None):
+    """
+    Reads a CSV file into a pandas DataFrame and converts the first column to a single string.
+
+    Args:
+        csv_file_path (str): The path to the CSV file.
+
+    Returns:
+        str: A string containing all rows of the first column, separated by newlines.
+
+    Notes:
+        - Ensure the file is a valid CSV file with consistent delimiters.
+        - Adjust the encoding if the file is not in 'UTF-8'.
+    """
+    try:
+        # Read the CSV file into a DataFrame
+        df = pd.read_csv(csv_file_path, encoding='UTF-8', header=header)
+        
+        # Convert the first column to a string with rows separated by "\n"
+        # First column is the comment, the second being sentiment
+        first_column_as_string = "\n".join(df.iloc[:, 0].astype(str))
+        return first_column_as_string
+    except Exception as e:
+        print(f"Error processing CSV file at {csv_file_path}: {e}")
+        raise
+    
 text = read_csv("/Users/apple/Documents/Projects/Samhail/models/llms/markovchain_text_generator.py")
+text += read_pd_csv("/Users/apple/Documents/Projects/Samhail/csv_datasets/reddit_social_media_comments.csv")
 
 chain = MarkovChain()
 chain.train(text)
