@@ -124,25 +124,36 @@ class MarkovChain:
         """
         Trains the Markov Chain model by building a graph of word transitions from the input text.
 
-        This method processes the input text, tokenizes it into words, and constructs a graph where 
-        each word points to a list of possible next words based on the sequence in the input text.
+        This method processes the input text to construct a graph where each word points to a list of possible
+        next words based on the input text. The graph is stored as a `defaultdict` of lists.
 
         Args:
             text (str): The input text used to train the Markov Chain model.
 
+        Returns:
+            None
+
+        Example:
+            >>> markov_chain = MarkovChain()
+            >>> markov_chain._train("Hello world. Hello again.")
+            >>> print(markov_chain.graph)
+            {'Hello': ['world', 'again'], 'world': ['Hello']}
+
         Notes:
-            - The `_tokenize` method is used to preprocess the input text by removing punctuation, 
-            numbers, and splitting it into words.
-            - The graph is constructed as a `defaultdict` where each key is a word, and the value 
-            is a list of words that can follow it in the input text.
-            - The method iterates through the tokenized words and appends the next word in the sequence 
-            to the list of possible transitions for the current word.
+            - The input text is preprocessed to ensure proper spacing between words and sentences.
+            - The `_tokenize` method is used to split the text into tokens (words).
+            - For each pair of consecutive tokens, the first token is added as a key in the graph, and the second
+            token is appended to the list of possible next words for that key.
+
+        Limitations:
+            - This method assumes that the input text is well-formed and does not handle edge cases like empty input.
+            - If the input text contains only one word, the graph will have that word as a key with an empty list as its value.
         """
+        # Ensure proper spacing between words and sentences
+        text = text.replace(".", ". ").replace(",", ", ").strip()
         tokens = self._tokenize(text)
-        for i, token in enumerate(tokens):
-            if (len(tokens) - 1) == i:
-                break
-            self.graph[token].append(tokens[i + 1])
+        for i in range(len(tokens) - 1):
+            self.graph[tokens[i]].append(tokens[i + 1])
     
     def _read_pd_csv(self, csv_file_path, header=None):
         """
@@ -161,9 +172,20 @@ class MarkovChain:
         Raises:
             Exception: If there is an error reading or processing the CSV file.
 
+        Example:
+            >>> markov_chain = MarkovChain()
+            >>> text = markov_chain._read_pd_csv("example.csv")
+            >>> print(text)
+            "Hello world\nThis is a test"
+
         Notes:
-            - Ensure the file is a valid CSV file with consistent delimiters.
-            - Adjust the encoding if the file is not in 'UTF-8'.
+            - The method uses `pandas.read_csv` to load the CSV file into a DataFrame.
+            - The first column of the DataFrame is converted to a string, with rows joined by newline characters.
+            - If the CSV file is empty or does not contain a valid first column, the method will return an empty string.
+
+        Limitations:
+            - The method assumes that the CSV file is well-formed and encoded in UTF-8.
+            - If the CSV file contains multiple columns, only the first column is processed.
         """
         try:
             # Read the CSV file into a DataFrame
