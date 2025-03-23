@@ -170,7 +170,8 @@ class MarkovChain:
     # Define constants for CSV file paths
     CSV_FILE_PATHS = [
         "/Users/apple/Documents/Projects/Samhail/csv_datasets/markov_chain_impression_dataset.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/reddit_social_media_comments.csv"
+        "/Users/apple/Documents/Projects/Samhail/csv_datasets/reddit_social_media_comments.csv",
+        "/Users/apple/Documents/Projects/Samhail/csv_datasets/twitter_social_media_comments.csv"
     ]
                
     def _generate(self, prompt, length=10):
