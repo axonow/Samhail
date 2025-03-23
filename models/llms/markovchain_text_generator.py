@@ -203,7 +203,9 @@ class MarkovChain:
     CSV_FILE_PATHS = [
         "/Users/apple/Documents/Projects/Samhail/csv_datasets/markov_chain_impression_dataset.csv",
         "/Users/apple/Documents/Projects/Samhail/csv_datasets/reddit_social_media_comments.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/twitter_social_media_comments.csv"
+        "/Users/apple/Documents/Projects/Samhail/csv_datasets/twitter_social_media_comments.csv",
+        "/Users/apple/Documents/Projects/Samhail/csv_datasets/imdb_movie_reviews.csv",
+        "/Users/apple/Documents/Projects/Samhail/csv_datasets/dcat_train_data.csv",
     ]
                
     def _generate(self, prompt, length=10):
@@ -286,4 +288,7 @@ def predict_next(user_input=None):
     if user_input is None:
         user_input = input("Enter a prompt: ")
     print(trained_model._generate(user_input, length=10))
+
+# Predict next word based on user input
+predict_next()
 
