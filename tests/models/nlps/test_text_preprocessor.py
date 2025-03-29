@@ -1,5 +1,5 @@
 import pytest
-from models.llms.text_preprocessor import TextPreprocessor
+from models.nlps.text_preprocessor import TextPreprocessor
 
 @pytest.fixture
 def preprocessor():
