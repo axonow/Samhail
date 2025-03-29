@@ -125,3 +125,4 @@ def test_predict_next(mocker):
     # Import and call the predict_next function with an empty prompt
     from models.nlps.markovchain_text_generator import predict_next
     predict_next(user_input="")
+    

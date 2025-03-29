@@ -13,6 +13,7 @@ tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 # Load the pre-trained GPT-2 language model
 # The model generates text by predicting the next word based on the input context.
 model = GPT2LMHeadModel.from_pretrained("gpt2")
+model.eval()  # Set the model to evaluation mode (disables dropout, etc.)
 
 # -------------------------------
 # Prediction Function
