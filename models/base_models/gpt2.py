@@ -20,6 +20,8 @@ model.eval()  # Set the model to evaluation mode (disables dropout, etc.)
 # -------------------------------
 
 def predict_next_word(text, top_k=5):
+    if not text.strip():
+        raise ValueError("Input text cannot be empty")
     """
     Predicts the next word(s) for a given input text using the GPT-2 model.
 

@@ -3,7 +3,6 @@ import pytest  # For writing and running tests
 from unittest.mock import patch, MagicMock  # For mocking external dependencies
 from models.base_models.gpt2 import predict_next_word  # Import the function to test
 import torch  # For tensor operations
-from transformers import GPT2Tokenizer, GPT2LMHeadModel  # For GPT-2 model and tokenizer
 
 # -------------------------------
 # Test Suite for GPT-2 Prediction Function
@@ -25,11 +24,11 @@ def test_predict_next_word(mock_model, mock_tokenizer):
     3. Call the `predict_next_word` function with a sample input.
     4. Assert that the function returns the expected top-k predictions.
     """
-
     # Mock the tokenizer's behavior
-    mock_tokenizer.return_tensors = "pt"
+    mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
     mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{token_id}"  # Simulated decoding
+    # Simulate decoding behavior for token IDs
+    mock_tokenizer.decode.side_effect = lambda token_id: f"word{int(token_id[0])}" if isinstance(token_id, list) else f"word{int(token_id)}"
 
     # Mock the model's behavior
     mock_outputs = MagicMock()
@@ -41,8 +40,8 @@ def test_predict_next_word(mock_model, mock_tokenizer):
 
     # Assert that the function returns the expected top-k predictions
     assert result == ["word4", "word3", "word2"]  # Expected decoded words
-    mock_tokenizer.assert_called_once_with("The cat sat on the", return_tensors="pt")
-    mock_model.assert_called_once()
+    mock_tokenizer.assert_called_once_with("The cat sat on the", return_tensors="pt")  # Ensure tokenizer is called correctly
+    mock_model.assert_called_once()  # Ensure the model is called once
 
 def test_predict_next_word_invalid_input():
     """
@@ -50,8 +49,9 @@ def test_predict_next_word_invalid_input():
 
     Steps:
     1. Call the `predict_next_word` function with an empty string.
-    2. Assert that the function raises a ValueError.
+    2. Assert that the function raises a ValueError with the appropriate error message.
     """
+    # Assert that a ValueError is raised for empty input
     with pytest.raises(ValueError, match="Input text cannot be empty"):
         predict_next_word("")
 
@@ -66,15 +66,16 @@ def test_predict_next_word_top_k(mock_model, mock_tokenizer):
         mock_tokenizer (MagicMock): Mocked GPT-2 tokenizer.
 
     Steps:
-    1. Mock the tokenizer and model behavior.
-    2. Call the `predict_next_word` function with a specific `top_k` value.
-    3. Assert that the function returns the correct number of predictions.
+    1. Mock the tokenizer to simulate tokenization and decoding behavior.
+    2. Mock the model to simulate inference and return logits.
+    3. Call the `predict_next_word` function with a specific `top_k` value.
+    4. Assert that the function returns the correct number of predictions.
     """
-
     # Mock the tokenizer's behavior
-    mock_tokenizer.return_tensors = "pt"
+    mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
     mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{token_id}"  # Simulated decoding
+    # Simulate decoding behavior for token IDs
+    mock_tokenizer.decode.side_effect = lambda token_id: f"word{int(token_id[0])}" if isinstance(token_id, list) else f"word{int(token_id)}"
 
     # Mock the model's behavior
     mock_outputs = MagicMock()
@@ -85,5 +86,5 @@ def test_predict_next_word_top_k(mock_model, mock_tokenizer):
     result = predict_next_word("The cat sat on the", top_k=2)
 
     # Assert that the function returns the correct number of predictions
-    assert len(result) == 2
+    assert len(result) == 2  # Ensure the number of predictions matches `top_k`
     assert result == ["word4", "word3"]  # Expected decoded words
