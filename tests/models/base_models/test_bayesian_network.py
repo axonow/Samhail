@@ -1,5 +1,6 @@
 # Import necessary libraries
 import pytest  # For writing and running tests
+import numpy as np  # For array comparison
 from pgmpy.models import BayesianNetwork  # For creating the Bayesian Network
 from pgmpy.factors.discrete import TabularCPD  # For defining Conditional Probability Distributions (CPDs)
 from pgmpy.inference import VariableElimination  # For performing inference on the Bayesian Network
@@ -31,15 +32,15 @@ def test_bayesian_network_cpds():
 
     # Test the 'Subject' CPD
     assert cpds['Subject'].variable_card == 2
-    assert cpds['Subject'].values == [[0.5], [0.5]]
+    assert np.array_equal(cpds['Subject'].values, [0.5, 0.5])  # Compare to a 1D array
 
     # Test the 'Action' CPD
     assert cpds['Action'].variable_card == 2
-    assert cpds['Action'].values == [[0.8, 0.3], [0.2, 0.7]]
+    assert np.array_equal(cpds['Action'].values, [[0.8, 0.3], [0.2, 0.7]])
 
     # Test the 'Location' CPD
     assert cpds['Location'].variable_card == 2
-    assert cpds['Location'].values == [[0.9, 0.4], [0.1, 0.6]]
+    assert np.array_equal(cpds['Location'].values, [[0.9, 0.1], [0.1, 0.9]])
 
 def test_bayesian_network_inference():
     """

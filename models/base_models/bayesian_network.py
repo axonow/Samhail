@@ -58,8 +58,8 @@ cpd_location = TabularCPD(
     variable='Location',  # The variable being defined
     variable_card=2,  # Number of states for 'Location'
     values=[
-        [0.9, 0.4],  # Probabilities for 'On the Mat'
-        [0.1, 0.6]   # Probabilities for 'In the Park'
+        [0.9, 0.1],  # Probabilities for 'On the Mat'
+        [0.1, 0.9]   # Probabilities for 'In the Park'
     ],
     evidence=['Action'],  # The variable(s) that 'Location' depends on
     evidence_card=[2],  # Number of states for the evidence variable(s)
