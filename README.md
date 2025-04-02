@@ -101,4 +101,4 @@ output:============================= test session starts ===================
     
 *   If you encounter any issues with TensorFlow or PyTorch, ensure that your MacOS has the necessary hardware support (e.g., GPU drivers).
 
-* If any issue faced for installation, create a GitHub Issue for this project, and providing accurate details.
+* If you encounter any installation issues, please create a GitHub Issue with detailed information.
