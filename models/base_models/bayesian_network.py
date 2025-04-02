@@ -1,5 +1,5 @@
 # Import necessary libraries from pgmpy
-from pgmpy.models import BayesianNetwork  # For defining the structure of the Bayesian Network
+from pgmpy.models import DiscreteBayesianNetwork  # For defining the structure of the Bayesian Network
 from pgmpy.factors.discrete import TabularCPD  # For defining Conditional Probability Distributions (CPDs)
 from pgmpy.inference import VariableElimination  # For performing inference on the Bayesian Network
 
@@ -11,7 +11,7 @@ from pgmpy.inference import VariableElimination  # For performing inference on t
 # 1. 'Subject' influences 'Action'
 # 2. 'Action' influences 'Location'
 # This structure represents the dependencies between the variables.
-model = BayesianNetwork([
+model = DiscreteBayesianNetwork([
     ('Subject', 'Action'),  # Subject influences Action
     ('Action', 'Location')  # Action influences Location
 ])
