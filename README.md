@@ -8,8 +8,7 @@ This guide provides detailed steps to set up and run the project suc
 
 2. Follow the installation instructions for MacOS.
 
-3. Verify the installation by running: `bash conda --version`
-
+3. Verify the installation by running: `conda --version`
 3. **Set Up a Conda Environment**
 ---------------------------------
 
