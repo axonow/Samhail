@@ -92,8 +92,9 @@ def predict_next_word_bert(text, top_k=5):
 # Example Predictions
 # -------------------------------
 
-# Predict the next word(s) for various input texts
-# The predictions are based on the context provided in the input text.
-print(predict_next_word_bert("The cat sat on the"))  # Example output: ["mat", "floor", "sofa", "chair", "bed"]
-print(predict_next_word_bert("Deep learning is"))  # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
-print(predict_next_word_bert("Transformers are revolutionizing"))  # Example output: ["AI", "technology", "NLP", "research", "science"]
+if __name__ == "__main__":
+    # Predict the next word(s) for various input texts
+    # The predictions are based on the context provided in the input text.
+    print(predict_next_word_bert("The cat sat on the"))  # Example output: ["mat", "floor", "sofa", "chair", "bed"]
+    print(predict_next_word_bert("Deep learning is"))  # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
+    print(predict_next_word_bert("Transformers are revolutionizing"))  # Example output: ["AI", "technology", "NLP", "research", "science"]
