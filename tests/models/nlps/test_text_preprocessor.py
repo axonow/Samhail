@@ -1,5 +1,5 @@
 import pytest
-from models.llms.text_preprocessor import TextPreprocessor
+from models.nlps.text_preprocessor import TextPreprocessor
 
 @pytest.fixture
 def preprocessor():
@@ -188,3 +188,4 @@ def test_normalize_social_media_text(preprocessor):
     # Excessive repeated characters
     text = "Soooooo happy!!!"
     assert preprocessor.normalize_social_media_text(text) == "So happy!"
+    

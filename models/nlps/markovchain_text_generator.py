@@ -279,7 +279,7 @@ class MarkovChain:
             self._train(text)
             return self
 
-def predict_next(user_input=None):
+def predict_next(user_input='A cat'):
     """
     Trains the Markov Chain model and generates text based on user input.
     """

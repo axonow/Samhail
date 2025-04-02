@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from models.llms.markovchain_text_generator import MarkovChain
+from models.nlps.markovchain_text_generator import MarkovChain
 
 @pytest.fixture
 def markov_chain():
@@ -102,26 +102,19 @@ def test_train_model(mocker, markov_chain):
     # assert trained_model.graph["Hello"] == ["world", "again"]
 
 def test_predict_next(mocker):
+    # Mock the input function to simulate user input
+    mocker.patch("builtins.input", side_effect=["Hello", ""])  # Simulate two inputs: "Hello" and an empty string
+
     # Mock the MarkovChain methods
     mock_chain = MarkovChain()
     mocker.patch.object(mock_chain, "_train_model", return_value=mock_chain)
     mocker.patch.object(mock_chain, "_generate", return_value="Hello world again")
 
     # Mock the MarkovChain class to return the mocked instance
-    mocker.patch("models.llms.markovchain_text_generator.MarkovChain", return_value=mock_chain)
+    mocker.patch("models.nlps.markovchain_text_generator.MarkovChain", return_value=mock_chain)
 
-    # Import and call the predict_next function with a parameter
-    from models.llms.markovchain_text_generator import predict_next
-    predict_next(user_input="Hello")
-
-    # Mock the MarkovChain methods
-    mock_chain = MarkovChain()
-    mocker.patch.object(mock_chain, "_train_model", return_value=mock_chain)
-    mocker.patch.object(mock_chain, "_generate", return_value="")
-
-    # Mock the MarkovChain class to return the mocked instance
-    mocker.patch("models.llms.markovchain_text_generator.MarkovChain", return_value=mock_chain)
-
-    # Import and call the predict_next function with an empty prompt
-    from models.llms.markovchain_text_generator import predict_next
-    predict_next(user_input="")
+    # Import and call the predict_next function
+    from models.nlps.markovchain_text_generator import predict_next
+    predict_next()  # Simulate input "Hello"
+    predict_next()  # Simulate empty input
+    
