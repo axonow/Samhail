@@ -9,15 +9,15 @@ This guide provides detailed steps to set up and run the project suc
 2. Follow the installation instructions for MacOS.
 
 3. Verify the installation by running: `conda --version`
-3. **Set Up a Conda Environment**
+4. **Set Up a Conda Environment**
 ---------------------------------
 
-1.  Create a new Conda environment for the project: `conda create --name project\_env python=3.9 -y`
+4.1.  Create a new Conda environment for the project: `conda create --name project\_env python=3.9 -y`
     
-2.  Activate the environment: `conda activate project\_env`
+4.2.  Activate the environment: `conda activate project\_env`
     
 
-4. **Install Python Dependencies**
+5. **Install Python Dependencies**
 ----------------------------------
 
 Run the following commands to install all required Python libraries:
