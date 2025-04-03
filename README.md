@@ -1,7 +1,7 @@
 # Installation Guide
 
 This guide provides detailed steps to set up and run the project successfully on 
-*MacOS Sequoia** using **Python Virtual Environment** and **Visual Studio Code**.
+**MacOS Sequoia** using **Python Virtual Environment** and **Visual Studio Code**.
 
 ## **Prerequisite**
 1. Download the project into your local machine using SSH/HTTPS

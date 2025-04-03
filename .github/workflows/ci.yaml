@@ -34,7 +34,7 @@ jobs:
           pip install numpy nltk langdetect pandas spacy pytest pytest-cov pytest-mock pgmpy tensorflow torch transformers pytorch torchvision torchaudio emoji
      
       # Step 5: Cache Dependencies
-        - name: Cache dependencies
+      - name: Cache dependencies
         uses: actions/cache@v3
         with:
             path: ~/.cache/pip
