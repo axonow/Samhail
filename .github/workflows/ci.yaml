@@ -3,10 +3,11 @@ name: Comprehensive CI Pipeline
 on:
   push:
     branches:
-      - main
+      - '**' # Trigger on all branches
   pull_request:
     branches:
-      - main
+      - '**' # Trigger on all pull requests
+  workflow_dispatch: # Allow manual triggering of the workflow
 
 jobs:
   ci:
