@@ -11,8 +11,10 @@ on:
 jobs:
   ci:
     name: Run CI Pipeline
-    runs-on: [self-hosted, ubuntu-latest] # Prefer self-hosted, fallback to GitHub-hosted runner
-
+    strategy:
+      matrix:
+        runner: [self-hosted, ubuntu-latest] # Prefer self-hosted, fallback to GitHub-hosted runner
+    runs-on: ${{ matrix.runner }}
     steps:
       # Step 1: Clone the Repository
       - name: Checkout Code
