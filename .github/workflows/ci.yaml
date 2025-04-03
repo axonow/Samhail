@@ -15,6 +15,7 @@ jobs:
       matrix:
         runner: [self-hosted, ubuntu-latest] # Prefer self-hosted, fallback to GitHub-hosted runner
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
     steps:
       # Step 1: Clone the Repository
       - name: Checkout Code
@@ -24,13 +25,22 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.9  # Use Python 3.9 for the project
+          python-version: 3.12.7  # Use Python 3.12.7 for the project
 
       # Step 3: Install Dependencies
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy spacy langdetect emoji pytest pytest-cov pytest-mock pgmpy tensorflow transformers torch
+          pip install numpy nltk langdetect pandas spacy pytest pytest-cov pytest-mock pgmpy tensorflow torch transformers pytorch torchvision torchaudio emoji
+     
+      # Step 5: Cache Dependencies
+        - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+            path: ~/.cache/pip
+            key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+            restore-keys: |
+            ${{ runner.os }}-pip-
 
       # Step 4: Test Linting
       - name: Run Linting
