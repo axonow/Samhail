@@ -66,7 +66,7 @@ eval "$(pyenv init -)"
 5.2.  Install dependencies using `pip`
 
 ```bash
-pip install --no-cache-dir numpy nltk spacy pytest pytest-cov pytest-mock emoji pgmpy tensorflow transformers torch torchvision torchaudio # Note that some dependencies are for future models in roadmap
+pip install --no-cache-dir
 ```
 
 6. **Install Visual Studio Code**
