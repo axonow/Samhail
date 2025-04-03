@@ -55,8 +55,7 @@ eval "$(pyenv init -)"
 
 4.4 Check your Python version for the project using `python --version`, in case there is a version mismatch, it means the `pyenv` Python is conflicting with system python.
 
-4.5 Rahash `pyenv` using `pyenv rehash`
-
+4.5 Rehash `pyenv` using `pyenv rehash`
 
 5. **Install Python Dependencies for Anaconda Environment**
 ----------------------------------
