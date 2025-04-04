@@ -6,6 +6,7 @@ on:
       - '**' # Trigger on all branches
   pull_request:
     branches:
+      - '**' # Trigger on all branches
       types:
         - opened
         - reopened
