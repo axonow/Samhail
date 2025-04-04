@@ -6,7 +6,9 @@ on:
       - '**' # Trigger on all branches
   pull_request:
     branches:
-      - '**' # Trigger on all pull requests
+      types:
+        - opened
+        - reopened
   workflow_dispatch: # Allow manual triggering of the workflow
 
 jobs:
@@ -56,6 +58,8 @@ jobs:
         uses: pycqa/bandit-action@v1.0.0
         with:
           args: -r models/base_models
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 7: Run Unit Tests and Generate Coverage Report
       - name: Run Unit Tests
