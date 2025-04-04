@@ -12,6 +12,12 @@ on:
     - reopened
   workflow_dispatch: # Allow manual triggering of the workflow
 
+permissions:
+  pull-requests: write     # Allows read/write access to pull requests
+  actions: read            # Allows read-only access to actions
+  issues: read             # Allows read-only access to issues
+  packages: read           # Allows read-only access to packages
+ 
 jobs:
   ci:
     name: Run CI Pipeline
