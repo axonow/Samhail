@@ -40,15 +40,15 @@ jobs:
         env:
           VALIDATE_PYTHON_PYLINT: true
           DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 5: Test Dependency Security Vulnerabilities
       - name: Check Dependency Security Vulnerabilities
         uses: pyupio/safety-action@v1
         with:
           args: check --full-report
+          api-key: ${{ secrets.SAFETY_API_KEY }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SAFETY_API_KEY }}
 
       # Step 6: Test Application Security Vulnerabilities
       - name: Run Bandit Security Checks
