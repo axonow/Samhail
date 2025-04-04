@@ -14,7 +14,7 @@ jobs:
     name: Run CI Pipeline
     strategy:
       matrix:
-        runner: [self-hosted, ubuntu-latest] # Prefer self-hosted, fallback to GitHub-hosted runner
+        runner: [ubuntu-latest] # GitHub-hosted runner
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
@@ -52,7 +52,7 @@ jobs:
 
       # Step 6: Test Application Security Vulnerabilities
       - name: Run Bandit Security Checks
-        uses: pycqa/bandit-action@v1.2.0
+        uses: pycqa/bandit-action@v1.0.0
         with:
           args: -r models/base_models
 
