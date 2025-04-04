@@ -13,6 +13,7 @@ on:
   workflow_dispatch: # Allow manual triggering of the workflow
 
 permissions:
+  contents: read         # Allows read-only access to the repository contents
   pull-requests: write     # Allows read/write access to pull requests
   actions: read            # Allows read-only access to actions
   issues: read             # Allows read-only access to issues
