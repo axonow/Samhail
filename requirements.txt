@@ -1,6 +1,7 @@
 absl-py==2.2.2
 annotated-types==0.7.0
 astunparse==1.6.3
+beautifulsoup4==4.13.3
 blis==1.2.1
 catalogue==2.0.10
 certifi==2025.1.31
