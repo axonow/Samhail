@@ -40,7 +40,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Step 4: Test Linting
+      # Step 4: Cache Dependencies
+      - name: Cache Python Dependencies
+        uses: actions/cache@v3
+        with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+      # Step 5: Test Linting
       - name: Run Linting
         uses: github/super-linter@v5
         env:
@@ -48,7 +57,7 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step 5: Test Dependency Security Vulnerabilities
+      # Step 6: Test Dependency Security Vulnerabilities
       - name: Check Dependency Security Vulnerabilities
         uses: pyupio/safety-action@v1
         with:
@@ -57,7 +66,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SAMHAIL_TOKEN}}
 
-      # Step 6: Test Application Security Vulnerabilities
+      # Step 7: Test Application Security Vulnerabilities
       - name: Run Bandit Security Checks
         uses: pycqa/bandit-action@v1.0.0
         with:
@@ -65,7 +74,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SAMHAIL_TOKEN }}
 
-      # Step 7: Run Unit Tests and Generate Coverage Report
+      # Step 8: Run Unit Tests and Generate Coverage Report
       - name: Run Unit Tests
         run: |
           pytest --cov=. --cov-report=json
