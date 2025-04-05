@@ -46,7 +46,7 @@ jobs:
         env:
           VALIDATE_PYTHON_PYLINT: true
           DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.SAMHAIL_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 5: Test Dependency Security Vulnerabilities
       - name: Check Dependency Security Vulnerabilities
