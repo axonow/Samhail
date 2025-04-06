@@ -1,131 +1,197 @@
-# Installation Guide
+## Installation
 
-This guide provides detailed steps to set up and run the project successfully on 
-**MacOS Sequoia** using **Python Virtual Environment** and **Visual Studio Code**.
+For detailed installation steps, please refer to the [Installation Guide](./docs/INSTALLATION_GUIDE.md).
 
-## **Prerequisite**
-1. Download the project into your local machine using SSH/HTTPS
-2. Navigate to project root directory from terminal
+### **Project Objective: Samhail**
 
-## 1. **Prepare Dependent Library Installation via Homebrew**
+The **Samhail** project is a comprehensive framework for building, validating, and testing various probabilistic and machine learning models. The project focuses on implementing and evaluating models for inference, prediction, and natural language processing (NLP) tasks. It ensures robust testing, environment consistency, and reproducibility across development and deployment workflows.
 
-```bash
-# Install HomeBrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew update
-brew install openssl readline sqlite3 xz zlib
-```
+### **Key Objectives**
 
-## 2. **Set Proper paths for your `$SHELL`**
-
-2.1.  Add the following to your `~/.zshrc`. MacOS Sequoia uses `zsh` by default. Hit the following commands.
-
-```zsh
-echo 'export PATH="/usr/local/opt/curl/bin:$PATH"' >> ~/.zshrc
-echo 'export LDFLAGS="/usr/local/opt/curl/lib:$LDFLAGS"' >> ~/.zshrc
-echo 'export CPPFLAGS="/usr/local/opt/curl/include:$CPPFLAGS"' >> ~/.zshrc
-echo 'export PKG_CONFIG_PATH="/usr/local/opt/curl/lib/pkgconfig:$PKG_CONFIG_PATH"' >> ~/.zshrc
-```
-
-2.2.  Reload the shell by `source ~/.zshrc`
-
-
-## 3. **Install pyenv as Python package manager**
-
-3.1.  Install `pyenv` from HomeBrew using `brew install pyenv`
-
-3.2   Add the following to your `~/.zshrc`
-
-```zshrc
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init --path)"
-eval "$(pyenv init -)"
-```
-
-3.3   Check `pyenv` installation using `pyenv --version`
-
-## 4. **Install and set Python for the project**
-
-4.1.  Check available Python versions to install from `pyenv`, confirm version `3.12.7` is available using `pyenv install --list`
+1.  **Probabilistic Modeling**:
     
-4.2.  Install Python by `pyenv install 3.12.7`
-
-4.3 Set Python for your project only, not affecting system Python using `pyenv local 3.12.7`
-
-4.4 Check your Python version for the project using `python --version`, in case there is a version mismatch, it means the `pyenv` Python is conflicting with system python.
-
-4.5 Rehash `pyenv` using `pyenv rehash`
-
-5. **Install Python Dependencies for Anaconda Environment**
-----------------------------------
-
-5.1.  Update pip using `pip install --upgrade pip`
-
-5.2.  Install dependencies using `pip`
-
-```bash
-pip install --no-cache-dir
-```
-
-6. **Install Visual Studio Code**
----------------------------------
-
-6.1.  Download and install **Visual Studio Code** from the [VS Code official website](https://code.visualstudio.com/download).
-    
-6.2.  Verify the installation by running: `code --version`
-    
-
-7. **Configure Conda Python in Visual Studio Code**
----------------------------------------------------
-
-7.1.  Open Visual Studio Code.
-    
-7.2.  Install the **Python Extension**:
-    
-    *   Go to the Extensions view (Ctrl+Shift+X or Cmd+Shift+X on Mac).
+    *   Define and validate **Bayesian Networks** for probabilistic inference and decision-making.
         
-    *   Search for "Python" and install the extension by Microsoft.
+    *   Implement **Markov Chains** for sequence modeling and text generation.
         
-7.3.  Configure the Python interpreter:
+    *   Use **Markov Chain Monte Carlo (MCMC)** methods for probabilistic sampling and inference.
+        
+2.  **Deep Learning Models**:
     
-    *   Press Cmd+Shift+P to open the Command Palette.
+    *   Implement and test **LSTM (Long Short-Term Memory)** networks for text prediction and sequence modeling.
         
-    *   Type Python: Select Interpreter and select it.
+    *   Use **BERT (Bidirectional Encoder Representations from Transformers)** for advanced NLP tasks like next-word prediction.
         
-    *   Choose the Pyenv environment (project\_env) you created earlier.
+3.  **Natural Language Processing (NLP)**:
+    
+    *   Preprocess text data with tasks such as tokenization, lemmatization, stopword removal, and named entity recognition.
+        
+    *   Implement text augmentation, normalization, and vectorization techniques for NLP pipelines.
+        
+4.  **Testing and Validation**:
+    
+    *   Write unit tests using `pytest` to validate the correctness of all models and their outputs.
+        
+    *   Ensure proper error handling for invalid inputs or configurations.
+        
+5.  **Environment Consistency**:
+    
+    *   Maintain consistent Python environments across local development, Jupyter Notebooks, and CI pipelines.
+        
+    *   Use tools like `pyenv`, `ipykernel`, and `pip` to manage dependencies and ensure reproducibility.
+        
+6.  **Interactive Notebooks**:
+    
+    *   Provide Jupyter Notebooks for interactive exploration and demonstration of models and their functionalities.
+        
+    *   Ensure notebooks use the correct Python interpreter and dependencies.
+        
+7.  **CI/CD Integration**:
+    
+    *   Automate testing and validation workflows using GitHub Actions.
+        
+    *   Ensure dependency installation and environment setup are consistent in CI pipelines.
         
 
-8. **Install Necessary VS Code Extensions**
--------------------------------------------
+### **Models Implemented**
 
-Install the following extensions in Visual Studio Code:
+1.  **Bayesian Network**:
+    
+    *   Probabilistic graphical model representing dependencies between variables.
+        
+    *   Example: `'Subject' → 'Action' → 'Location'`.
+        
+    *   Supports inference using **Variable Elimination**.
+        
+2.  **Markov Chain**:
+    
+    *   Sequence modeling technique based on state transitions.
+        
+    *   Used for text generation and prediction tasks.
+        
+3.  **Markov Chain Monte Carlo (MCMC)**:
+    
+    *   Probabilistic sampling method for inference in complex models.
+        
+4.  **LSTM (Long Short-Term Memory)**:
+    
+    *   Recurrent neural network (RNN) architecture for sequence modeling.
+        
+    *   Used for next-word prediction and text generation.
+        
+5.  **BERT (Bidirectional Encoder Representations from Transformers)**:
+    
+    *   Transformer-based model for advanced NLP tasks.
+        
+    *   Used for next-word prediction and contextual understanding.
+        
+6.  **Text Preprocessor**:
+    
+    *   Comprehensive NLP pipeline for preprocessing text data.
+        
+    *   Tasks include tokenization, lemmatization, stopword removal, named entity recognition, and more.
+        
 
-1.  **Python** (by Microsoft): For Python development.
+### **Technologies and Libraries**
+
+*   **Python**: Core programming language for the project.
     
-2.  **GitHub Copilot**: For AI-powered code suggestions.
+*   **pgmpy**: Library for creating and working with Bayesian Networks.
     
-3.  **GitHub Copilot Chat**: For interactive AI assistance.
+*   **pomegranate**: Alternative library for probabilistic modeling (optional).
     
-4.  **Pylance**: For Python language support.
+*   **spaCy**: NLP library for text preprocessing and linguistic analysis.
     
-5.  **Pytest**: For running Python tests.
+*   **TensorFlow/Keras**: Frameworks for implementing LSTM and BERT models.
     
-6.  **Prettier**: For code formatting.
+*   **pytest**: Framework for writing and running automated tests.
+    
+*   **Jupyter Notebooks**: For interactive exploration and demonstration.
+    
+*   **VSCode**: Integrated development environment for coding and debugging.
     
 
-8. **Run Pytest for Testing**
------------------------------
+### **Key Features**
 
-1.  Navigate to the project root directory
+1.  **Probabilistic Models**:
     
-2.  Run the tests using pytest: ` pytest --cov=models/nlps --cov-report=html -v`
+    *   Define Bayesian Networks, Markov Chains, and MCMC methods.
+        
+    *   Perform inference and sampling for probabilistic decision-making.
+        
+2.  **Deep Learning Models**:
     
-3.  Example
-```python 
-output:============================= test session starts =============================platform darwin -- Python 3.9.x, pytest-7.x.x, py-1.x.x, pluggy-1.x.xrootdir: /Users/apple/Documents/Projects/Samhailplugins: cov-3.x.xcollected 10 itemstests/models/base\_models/test\_bert.py ..........                        \[100%\]---------- coverage: platform darwin, python 3.9.x ----------Name                                      Stmts   Miss  Cover   Missing-----------------------------------------------------------------------models/base\_models/bert.py                  50      0   100%-----------------------------------------------------------------------============================== 10 passed in 2.34s ==============================
-```    
+    *   Implement LSTM and BERT for text prediction and sequence modeling.
+        
+    *   Evaluate model performance on test datasets.
+        
+3.  **NLP Pipelines**:
     
-*   If you encounter any issues with TensorFlow or PyTorch, ensure that your MacOS has the necessary hardware support (e.g., GPU drivers).
+    *   Preprocess text data with tasks like tokenization, lemmatization, and stopword removal.
+        
+    *   Perform advanced NLP tasks like named entity recognition and vectorization.
+        
+4.  **Testing Framework**:
+    
+    *   Validate Bayesian Network structures, CPDs, and inference results.
+        
+    *   Test LSTM and BERT models for accuracy and robustness.
+        
+    *   Ensure proper error handling for invalid inputs or configurations.
+        
+5.  **Environment Management**:
+    
+    *   Align Python environments across local development, notebooks, and CI pipelines.
+        
+    *   Use `ipykernel` to ensure Jupyter Notebooks use the correct interpreter.
+        
 
-* If you encounter any installation issues, please create a GitHub Issue with detailed information.
+### **Challenges and Solutions**
+
+1.  **Inconsistent Library Behavior**:
+    
+    *   `pgmpy` has inconsistencies across versions (e.g., `BayesianNetwork` vs. `DiscreteBayesianNetwork`).
+        
+    *   **Solution**: Pin the library version in `requirements.txt` and align code accordingly.
+        
+2.  **Environment Mismatch**:
+    
+    *   Different Python interpreters in VSCode, terminal, and notebooks.
+        
+    *   **Solution**: Use `ipykernel` to align Jupyter Notebook with the correct environment.
+        
+3.  **Missing Dependencies**:
+    
+    *   Errors like missing `spaCy models` (`en_core_web_sm`).
+        
+    *   **Solution**: Install required models and add them to the setup process.
+        
+4.  **Testing Failures**:
+    
+    *   Assertion errors or missing modules during `pytest` runs.
+        
+    *   **Solution**: Debug and fix test cases, ensure proper dependency installation, and validate models.
+        
+
+### **Future Scope**
+
+1.  **Expand Model Complexity**:
+    
+    *   Add support for more complex Bayesian Networks and NLP tasks.
+        
+2.  **Integrate Alternative Libraries**:
+    
+    *   Explore `pomegranate` for performance optimization and simpler API usage.
+        
+3.  **Interactive Visualizations**:
+    
+    *   Use libraries like `networkx` or pygraphviz to visualize Bayesian Network structures.
+        
+4.  **Deployment**:
+    
+    *   Package the project as a library or API for broader use cases.
+        
+
+### **Conclusion**
+
+The **Samhail** project provides a robust framework for probabilistic modeling, deep learning, and NLP tasks. By leveraging modern Python libraries and tools, it ensures consistency, reliability, and scalability for real-world applications in inference, prediction, and decision-making.
