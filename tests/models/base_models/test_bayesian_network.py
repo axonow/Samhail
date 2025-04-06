@@ -1,7 +1,7 @@
 # Import necessary libraries
 import pytest  # For writing and running tests
 import numpy as np  # For array comparison
-from pgmpy.models import BayesianNetwork  # For creating the Bayesian Network
+from pgmpy.models import BayesianModel  # For creating the Bayesian Network
 from pgmpy.factors.discrete import TabularCPD  # For defining Conditional Probability Distributions (CPDs)
 from pgmpy.inference import VariableElimination  # For performing inference on the Bayesian Network
 from models.base_models.bayesian_network import model, inference  # Import the model and inference object
@@ -65,7 +65,7 @@ def test_bayesian_network_invalid_model():
         - An exception is raised when the model is invalid.
     """
     # Create an invalid Bayesian Network (missing CPDs)
-    invalid_model = BayesianNetwork([('A', 'B')])
+    invalid_model = BayesianModel([('A', 'B')])
 
     with pytest.raises(ValueError, match="CPD associated with"):
         invalid_model.check_model()
