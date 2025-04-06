@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: "pip" # Specifies the package manager (pip for Python)
+    directory: "/"           # Root directory of the project
+    schedule:
+      interval: "weekly"     # Check for updates on a weekly basis
+    commit-message:
+      prefix: "Dependabot: "         # Prefix for the commit message
+    open-pull-requests-limit: 1 # Limit to a single pull request
+    rebase-strategy: "auto"  # Automatically rebase if conflicts occur
