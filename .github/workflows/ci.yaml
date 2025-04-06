@@ -77,4 +77,4 @@ jobs:
       # Step 8: Run Unit Tests and Generate Coverage Report
       - name: Run Unit Tests
         run: |
-          pytest --cov=. --cov-report=json
+          python -m pytest --cov=. --cov-report=json
