@@ -51,6 +51,7 @@ Limitations:
     - The `_generate` method assumes that the graph has been trained before generating text.
 
 """
+import os
 
 # The `random` module is used to randomly select the next word during text generation.
 # Specifically, the `random.choice` method is used to pick a word from the list of possible next words.
@@ -199,13 +200,16 @@ class MarkovChain:
             print(f"Error processing CSV file at {csv_file_path}: {e}")
             raise
     
-    # Define constants for CSV file paths
+    # Define the base directory as the root of the project
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+   # Define constants for CSV file paths
     CSV_FILE_PATHS = [
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/markov_chain_impression_dataset.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/reddit_social_media_comments.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/twitter_social_media_comments.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/imdb_movie_reviews.csv",
-        "/Users/apple/Documents/Projects/Samhail/csv_datasets/dcat_train_data.csv",
+        os.path.join(BASE_DIR, "csv_datasets", "markov_chain_impression_dataset.csv"),
+        os.path.join(BASE_DIR, "csv_datasets", "reddit_social_media_comments.csv"),
+        os.path.join(BASE_DIR, "csv_datasets", "twitter_social_media_comments.csv"),
+        os.path.join(BASE_DIR, "csv_datasets", "imdb_movie_reviews.csv"),
+        os.path.join(BASE_DIR, "csv_datasets", "dcat_train_data.csv"),    
     ]
                
     def _generate(self, prompt, length=10):
