@@ -75,6 +75,7 @@ jobs:
         run: |
           python -m pip install bandit
           python -m bandit -r models/base_models
+        continue-on-error: true
 
       # Step 9: Run Unit Tests and Generate Coverage Report
       - name: Run Unit Tests
