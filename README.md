@@ -1,3 +1,6 @@
+# ![ChatGPT Image Apr 6, 2025 at 10_51_23 PM](https://github.com/user-attachments/assets/dd1100bb-5cc4-4e2a-ac4a-8c1f8ce787a6)
+
+
 ## Installation
 
 For detailed installation steps, please refer to the [Installation Guide](./docs/INSTALLATION_GUIDE.md).
