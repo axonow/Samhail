@@ -1,3 +1,6 @@
+# [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)&nbsp;&nbsp;[![Comprehensive CI Pipeline](https://github.com/axonow/Samhail/actions/workflows/ci.yaml/badge.svg)](https://github.com/axonow/Samhail/actions/workflows/ci.yaml)&nbsp;&nbsp;![Codecov (with branch)](https://img.shields.io/codecov/c/github/axon/Samhail/main)
+
+
 # ![Wide SamHail](https://github.com/user-attachments/assets/ea274ca9-054a-43a3-adf4-ba0ce22700c1)
 
 ## Installation
