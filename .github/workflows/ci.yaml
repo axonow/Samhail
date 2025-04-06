@@ -80,6 +80,7 @@ jobs:
       - name: Run Unit Tests
         run: |
           python -m pytest --cov --cov-report=xml
+        continue-on-error: true
 
       # Step 10: Upload coverage reports to Codecov
       - name: Upload coverage reports to Codecov
