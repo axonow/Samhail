@@ -1,5 +1,4 @@
-# ![ChatGPT Image Apr 6, 2025 at 10_51_23 PM](https://github.com/user-attachments/assets/dd1100bb-5cc4-4e2a-ac4a-8c1f8ce787a6)
-
+# ![Wide SamHail](https://github.com/user-attachments/assets/ea274ca9-054a-43a3-adf4-ba0ce22700c1)
 
 ## Installation
 
