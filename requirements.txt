@@ -3,6 +3,7 @@ annotated-types==0.7.0
 appnope==0.1.4
 asttokens==3.0.0
 astunparse==1.6.3
+bandit==1.8.3
 beautifulsoup4==4.13.3
 blis==1.2.1
 catalogue==2.0.10

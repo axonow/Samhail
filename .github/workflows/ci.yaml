@@ -73,7 +73,6 @@ jobs:
       # Step 8: Test Application Security Vulnerabilities
       - name: Run Bandit Security Checks
         run: |
-          python -m pip install bandit
           python -m bandit -r models/base_models
         continue-on-error: true
 
