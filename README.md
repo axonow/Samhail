@@ -11,69 +11,125 @@ For detailed installation steps, please refer to the [Installation Guide](./docs
 
 For details about Samhail, and future plans, please refer to the [Project and Future Plans](./docs/PROJECT.md).
 
-## Powered By
+## 📚 Credits
 
-The following libraries are utilized in this project:
+<div style="background-color:#000; padding: 20px; border-radius: 10px;">
 
-[![absl-py](https://abseil.io/favicon.ico)](https://abseil.io/)
-[![asttokens](https://pypi.org/favicon.ico)](https://pypi.org/project/asttokens/)
-[![astunparse](https://pypi.org/favicon.ico)](https://pypi.org/project/astunparse/)
-[![bandit](https://bandit.readthedocs.io/en/latest/_static/favicon.ico)](https://bandit.readthedocs.io/)
-[![beautifulsoup4](https://www.crummy.com/favicon.ico)](https://www.crummy.com/software/BeautifulSoup/)
-[![certifi](https://pypi.org/favicon.ico)](https://pypi.org/project/certifi/)
-[![charset-normalizer](https://pypi.org/favicon.ico)](https://pypi.org/project/charset-normalizer/)
-[![click](https://palletsprojects.com/favicon.ico)](https://palletsprojects.com/p/click/)
-[![cloudpathlib](https://cloudpathlib.drivendata.org/en/stable/_static/favicon.ico)](https://cloudpathlib.drivendata.org/)
-[![decorator](https://pypi.org/favicon.ico)](https://pypi.org/project/decorator/)
-[![flatbuffers](https://google.github.io/flatbuffers/favicon.ico)](https://google.github.io/flatbuffers/)
-[![fsspec](https://pypi.org/favicon.ico)](https://pypi.org/project/fsspec/)
-[![gast](https://pypi.org/favicon.ico)](https://pypi.org/project/gast/)
-[![grpcio](https://grpc.io/favicon.ico)](https://grpc.io/)
-[![h5py](https://www.h5py.org/favicon.ico)](https://www.h5py.org/)
-[![huggingface-hub](https://huggingface.co/favicon.ico)](https://huggingface.co/)
-[![idna](https://pypi.org/favicon.ico)](https://pypi.org/project/idna/)
-[![ipykernel](https://ipython.org/_static/favicon.ico)](https://ipython.org/)
-[![ipython](https://ipython.org/_static/favicon.ico)](https://ipython.org/)
-[![jedi](https://pypi.org/favicon.ico)](https://pypi.org/project/jedi/)
-[![Jinja2](https://palletsprojects.com/favicon.ico)](https://palletsprojects.com/p/jinja/)
-[![joblib](https://joblib.readthedocs.io/en/latest/_static/favicon.ico)](https://joblib.readthedocs.io/)
-[![keras](https://keras.io/favicon.ico)](https://keras.io/)
-[![langdetect](https://pypi.org/favicon.ico)](https://pypi.org/project/langdetect/)
-[![Markdown](https://pypi.org/favicon.ico)](https://pypi.org/project/Markdown/)
-[![MarkupSafe](https://palletsprojects.com/favicon.ico)](https://palletsprojects.com/p/markupsafe/)
-[![ml-dtypes](https://pypi.org/favicon.ico)](https://pypi.org/project/ml-dtypes/)
-[![mpmath](https://pypi.org/favicon.ico)](https://pypi.org/project/mpmath/)
-[![networkx](https://networkx.org/favicon.ico)](https://networkx.org/)
-[![nltk](https://www.nltk.org/favicon.ico)](https://www.nltk.org/)
-[![numpy](https://numpy.org/favicon.ico)](https://numpy.org/)
-[![opt-einsum](https://pypi.org/favicon.ico)](https://pypi.org/project/opt-einsum/)
-[![packaging](https://pypi.org/favicon.ico)](https://pypi.org/project/packaging/)
-[![pandas](https://pandas.pydata.org/favicon.ico)](https://pandas.pydata.org/)
-[![pgmpy](https://pgmpy.org/favicon.ico)](https://pgmpy.org/)
-[![Pillow](https://python-pillow.org/favicon.ico)](https://python-pillow.org/)
-[![protobuf](https://developers.google.com/static/protocol-buffers/images/favicon.png)](https://developers.google.com/protocol-buffers)
-[![psutil](https://pypi.org/favicon.ico)](https://pypi.org/project/psutil/)
-[![pydantic](https://docs.pydantic.dev/en/stable/favicon.ico)](https://docs.pydantic.dev/)
-[![pytest](https://pytest.org/favicon.ico)](https://pytest.org/)
-[![python-dateutil](https://dateutil.readthedocs.io/en/stable/_static/favicon.ico)](https://dateutil.readthedocs.io/)
-[![pytz](https://pypi.org/favicon.ico)](https://pypi.org/project/pytz/)
-[![PyYAML](https://pyyaml.org/favicon.ico)](https://pyyaml.org/)
-[![regex](https://pypi.org/favicon.ico)](https://pypi.org/project/regex/)
-[![requests](https://docs.python-requests.org/en/latest/_static/favicon.ico)](https://docs.python-requests.org/)
-[![scikit-learn](https://scikit-learn.org/favicon.ico)](https://scikit-learn.org/)
-[![scipy](https://scipy.org/favicon.ico)](https://scipy.org/)
-[![setuptools](https://pypi.org/favicon.ico)](https://pypi.org/project/setuptools/)
-[![six](https://pypi.org/favicon.ico)](https://pypi.org/project/six/)
-[![spacy](https://spacy.io/favicon.ico)](https://spacy.io/)
-[![sympy](https://www.sympy.org/static/favicon.ico)](https://www.sympy.org/)
-[![tensorboard](https://www.tensorflow.org/favicon.ico)](https://www.tensorflow.org/tensorboard)
-[![tensorflow](https://www.tensorflow.org/favicon.ico)](https://www.tensorflow.org/)
-[![termcolor](https://pypi.org/favicon.ico)](https://pypi.org/project/termcolor/)
-[![thinc](https://thinc.ai/favicon.ico)](https://thinc.ai/)
-[![tokenizers](https://huggingface.co/favicon.ico)](https://huggingface.co/docs/tokenizers/)
-[![torch](https://pytorch.org/favicon.ico)](https://pytorch.org/)
-[![tqdm](https://tqdm.github.io/favicon.ico)](https://tqdm.github.io/)
-[![transformers](https://huggingface.co/favicon.ico)](
-::contentReference[oaicite:3]{index=3}
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">🤖 Machine Learning & Deep Learning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://pytorch.org/" target="_blank"><img src="https://pytorch.org/favicon.ico" alt="PyTorch" width="20"/></a></td>
+      <td><a href="https://www.tensorflow.org/" target="_blank"><img src="https://www.tensorflow.org/favicon.ico" alt="TensorFlow" width="20"/></a></td>
+      <td><a href="https://keras.io/" target="_blank"><img src="https://keras.io/favicon.ico" alt="Keras" width="20"/></a></td>
+      <td><a href="https://scikit-learn.org/" target="_blank"><img src="https://scikit-learn.org/favicon.ico" alt="Scikit-learn" width="20"/></a></td>
+      <td><a href="https://thinc.ai/" target="_blank"><img src="https://thinc.ai/favicon.ico" alt="Thinc" width="20"/></a></td>
+      <td><a href="https://pgmpy.org/" target="_blank"><img src="https://pgmpy.org/favicon.ico" alt="pgmpy" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+<br/>
+
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">🧠 Natural Language Processing</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://huggingface.co/" target="_blank"><img src="https://huggingface.co/favicon.ico" alt="Hugging Face" width="20"/></a></td>
+      <td><a href="https://spacy.io/" target="_blank"><img src="https://spacy.io/favicon.ico" alt="spaCy" width="20"/></a></td>
+      <td><a href="https://www.nltk.org/" target="_blank"><img src="https://www.nltk.org/favicon.ico" alt="nltk" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+<br/>
+
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">📊 Data Handling & Math</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://numpy.org/" target="_blank"><img src="https://numpy.org/favicon.ico" alt="NumPy" width="20"/></a></td>
+      <td><a href="https://pandas.pydata.org/" target="_blank"><img src="https://pandas.pydata.org/favicon.ico" alt="Pandas" width="20"/></a></td>
+      <td><a href="https://scipy.org/" target="_blank"><img src="https://scipy.org/favicon.ico" alt="SciPy" width="20"/></a></td>
+      <td><a href="https://www.sympy.org/" target="_blank"><img src="https://www.sympy.org/static/favicon.ico" alt="SymPy" width="20"/></a></td>
+      <td><a href="https://networkx.org/" target="_blank"><img src="https://networkx.org/favicon.ico" alt="NetworkX" width="20"/></a></td>
+      <td><a href="https://www.h5py.org/" target="_blank"><img src="https://www.h5py.org/favicon.ico" alt="h5py" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+<br/>
+
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">🛠️ Utilities & Infrastructure</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://python-pillow.org/" target="_blank"><img src="https://python-pillow.org/favicon.ico" alt="Pillow" width="20"/></a></td>
+      <td><a href="https://joblib.readthedocs.io/" target="_blank"><img src="https://joblib.readthedocs.io/en/latest/_static/favicon.ico" alt="joblib" width="20"/></a></td>
+      <td><a href="https://cloudpathlib.drivendata.org/" target="_blank"><img src="https://cloudpathlib.drivendata.org/en/stable/_static/favicon.ico" alt="cloudpathlib" width="20"/></a></td>
+      <td><a href="https://www.crummy.com/software/BeautifulSoup/" target="_blank"><img src="https://www.crummy.com/favicon.ico" alt="BeautifulSoup" width="20"/></a></td>
+      <td><a href="https://grpc.io/" target="_blank"><img src="https://grpc.io/favicon.ico" alt="gRPC" width="20"/></a></td>
+      <td><a href="https://google.github.io/flatbuffers/" target="_blank"><img src="https://google.github.io/flatbuffers/favicon.ico" alt="FlatBuffers" width="20"/></a></td>
+      <td><a href="https://developers.google.com/protocol-buffers" target="_blank"><img src="https://developers.google.com/static/protocol-buffers/images/favicon.png" alt="protobuf" width="20"/></a></td>
+      <td><a href="https://dateutil.readthedocs.io/" target="_blank"><img src="https://dateutil.readthedocs.io/en/stable/_static/favicon.ico" alt="dateutil" width="20"/></a></td>
+      <td><a href="https://pyyaml.org/" target="_blank"><img src="https://pyyaml.org/favicon.ico" alt="PyYAML" width="20"/></a></td>
+      <td><a href="https://palletsprojects.com/p/click/" target="_blank"><img src="https://palletsprojects.com/favicon.ico" alt="Click" width="20"/></a></td>
+      <td><a href="https://tqdm.github.io/" target="_blank"><img src="https://tqdm.github.io/favicon.ico" alt="tqdm" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+<br/>
+
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">🧪 Testing & Validation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://docs.pydantic.dev/" target="_blank"><img src="https://docs.pydantic.dev/en/stable/favicon.ico" alt="Pydantic" width="20"/></a></td>
+      <td><a href="https://pytest.org/" target="_blank"><img src="https://pytest.org/favicon.ico" alt="Pytest" width="20"/></a></td>
+      <td><a href="https://ipython.org/" target="_blank"><img src="https://ipython.org/_static/favicon.ico" alt="IPython" width="20"/></a></td>
+      <td><a href="https://docs.python-requests.org/" target="_blank"><img src="https://docs.python-requests.org/en/latest/_static/favicon.ico" alt="Requests" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+<br/>
+
+<table>
+  <thead>
+    <tr>
+      <th style="color:white; text-align: left;">🔐 Security & DevOps</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://bandit.readthedocs.io/" target="_blank"><img src="https://bandit.readthedocs.io/en/latest/_static/favicon.ico" alt="Bandit" width="20"/></a></td>
+      <td><a href="https://abseil.io/" target="_blank"><img src="https://abseil.io/favicon.ico" alt="absl-py" width="20"/></a></td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
+
 
 
