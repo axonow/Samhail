@@ -75,7 +75,7 @@ def predict_next_word_bert(text, top_k=5):
         outputs = model(**inputs)
 
     # Extract the logits for the [MASK] token
-    logits = outputs.logits[0, mask_token_index, :]
+    logits = outputs.logits[0, mask_token_index.item(), :]
 
     # Apply softmax to convert logits into probabilities
     probabilities = torch.nn.functional.softmax(logits, dim=-1)
