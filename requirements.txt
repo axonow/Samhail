@@ -112,7 +112,7 @@ termcolor==3.0.1
 thinc==8.3.4
 threadpoolctl==3.6.0
 tokenizers==0.21.1
-torch==2.2.2
+torch==2.6.0
 torchaudio==2.6.0
 torchvision==0.17.2
 tornado==6.4.2
