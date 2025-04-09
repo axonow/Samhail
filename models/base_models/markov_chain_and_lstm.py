@@ -4,6 +4,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Embedding, Dropout
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import LearningRateScheduler
+from tensorflow.keras.preprocessing.text import Tokenizer
 
 # -------------------------------
 # Training Data Preparation
@@ -111,12 +112,42 @@ model.fit(X, y, epochs=500, verbose=1, callbacks=[lr_scheduler])
 # 2. Pads the input to match the model's input shape.
 # 3. Predicts the next word's probabilities using the trained model.
 # 4. Finds the word with the highest probability (argmax) and returns it.
-def predict_next_word(seed_phrase):
-    seed_encoded = [word_to_index[word] for word in seed_phrase.split()]  # Convert words to indices
-    seed_encoded = pad_sequences([seed_encoded], maxlen=X.shape[1], padding='pre')  # Pad the input
-    predicted_probs = model.predict(seed_encoded)  # Predict probabilities
-    predicted_index = np.argmax(predicted_probs, axis=-1)  # Get the index of the highest probability
-    return index_to_word[predicted_index[0]]  # Convert the index back to a word
+def predict_next_word(input_text, model, tokenizer, index_to_word, max_length):
+    """
+    Predicts the next word for a given input text using the LSTM model.
+
+    Args:
+        input_text (str): The input text for which the next word is predicted.
+        model: The trained LSTM model.
+        tokenizer: The tokenizer used for text preprocessing.
+        index_to_word (dict): Mapping from indices to words.
+        max_length (int): The maximum length of the input sequence.
+
+    Returns:
+        str: The predicted next word.
+    """
+
+    # Convert each subarray of words into a sentence
+    sentences = [" ".join(subarray) for subarray in sequences]
+
+    # Initialize the tokenizer and fit it on some sample text
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(sentences)
+
+    # Tokenize the input text
+    sequence = tokenizer.texts_to_sequences([input_text])[0]
+
+    # Pad the sequence to the required length
+    padded_sequence = pad_sequences([sequence], maxlen=max_length, padding="pre")
+
+    # Perform inference with the model
+    prediction = model.predict(padded_sequence)
+
+    # Get the index of the word with the highest probability
+    predicted_index = np.argmax(prediction)
+
+    # Map the index to the corresponding word
+    return index_to_word.get(predicted_index, None)
 
 # -------------------------------
 # Example Predictions
@@ -124,7 +155,8 @@ def predict_next_word(seed_phrase):
 
 # Demonstrate the model's ability to predict the next word for given seed phrases
 # The expected output depends on the training data and the learned probabilities.
-print(predict_next_word("the cat"))  # Expected output: "sat" or "jumped"
-print(predict_next_word("the dog"))  # Expected output: "barked" or "chased"
-print(predict_next_word("the bird"))  # Expected output: "flew" or "sang"
-print(predict_next_word("the fish"))  # Expected output: "swam" or "jumped"
+print("Predicted next word for 'the cat sat on':", predict_next_word("the cat sat on", model, word_to_index, index_to_word, max_length=5))
+print("Predicted next word for 'the dog chased':", predict_next_word("the dog chased", model, word_to_index, index_to_word, max_length=5))
+print("Predicted next word for 'the bird sang':", predict_next_word("the bird sang", model, word_to_index, index_to_word, max_length=5))
+print("Predicted next word for 'the fish jumped':", predict_next_word("the fish jumped", model, word_to_index, index_to_word, max_length=5))
+
