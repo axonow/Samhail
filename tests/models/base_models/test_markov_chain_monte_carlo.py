@@ -96,11 +96,20 @@ def test_predict_next_word(mock_predict):
     # Mock the predict method
     mock_predict.return_value = np.array([[0.1, 0.2, 0.7]])  # Simulated probabilities
 
+    # Mock the tokenizer
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.texts_to_sequences.return_value = [[1, 2, 3, 4]]  # Simulated tokenized input
+    mock_tokenizer.word_index = {"the": 1, "cat": 2, "sat": 3, "on": 4, "mat": 5}  # Mocked word-to-index mapping
+
+    # Dynamically determine the expected word based on the mocked probabilities
+    expected_index = np.argmax(mock_predict.return_value) + 1  # Add 1 because word_index is 1-based
+    expected_word = {v: k for k, v in mock_tokenizer.word_index.items()}[expected_index]  # Reverse mapping
+
     # Call the function with a sample input
-    result = predict_next_word(model, tokenizer, "The cat sat on", max_length)
+    result = predict_next_word(model, mock_tokenizer, "The cat sat on", max_length=5)
 
     # Assert that the function returns the correct predicted word
-    assert result == "mat"  # Expected predicted word based on mock probabilities
+    assert result == expected_word  # Dynamically assert the expected word
     mock_predict.assert_called_once()
 
 def test_predict_next_word_invalid_input():

@@ -136,6 +136,10 @@ def predict_next_word(model, tokenizer, text, max_length):
     # Convert the input text into a sequence of indices
     sequence = tokenizer.texts_to_sequences([text])[0]
 
+    # Return None if the sequence is empty (unknown input)
+    if not sequence:
+        return None
+
     # Pad the sequence to match the model's input length
     sequence = pad_sequences([sequence], maxlen=max_length - 1, padding="pre")
 
