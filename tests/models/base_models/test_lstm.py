@@ -9,6 +9,7 @@ from models.base_models.lstm import predict_next_word  # Import the function to 
 # Test Suite for LSTM Model
 # -------------------------------
 
+
 @patch("models.base_models.lstm.tokenizer")
 @patch("models.base_models.lstm.model")
 def test_predict_next_word(mock_model, mock_tokenizer):
@@ -27,19 +28,31 @@ def test_predict_next_word(mock_model, mock_tokenizer):
     """
 
     # Mock the tokenizer's behavior
-    mock_tokenizer.texts_to_sequences.return_value = [[1, 2, 3]]  # Simulated tokenized input
-    mock_tokenizer.word_index = {"word1": 1, "word2": 2, "word3": 3, "word4": 4}  # Simulated vocabulary
+    mock_tokenizer.texts_to_sequences.return_value = [
+        [1, 2, 3]
+    ]  # Simulated tokenized input
+    mock_tokenizer.word_index = {
+        "word1": 1,
+        "word2": 2,
+        "word3": 3,
+        "word4": 4,
+    }  # Simulated vocabulary
 
     # Mock the model's behavior
-    mock_model.predict.return_value = np.array([[0.1, 0.2, 0.3, 0.4]])  # Simulated prediction probabilities
+    mock_model.predict.return_value = np.array(
+        [[0.1, 0.2, 0.3, 0.4]]
+    )  # Simulated prediction probabilities
 
     # Call the function with a sample input
-    result = predict_next_word(mock_model, mock_tokenizer, "The cat sat on", max_length=5)
+    result = predict_next_word(
+        mock_model, mock_tokenizer, "The cat sat on", max_length=5
+    )
 
     # Assert that the function returns the expected predicted word
     assert result == "word4"  # Expected predicted word
     mock_tokenizer.texts_to_sequences.assert_called_once_with(["The cat sat on"])
     mock_model.predict.assert_called_once()
+
 
 def test_predict_next_word_no_prediction():
     """
@@ -54,17 +67,23 @@ def test_predict_next_word_no_prediction():
     # Mock the tokenizer's behavior
     tokenizer = MagicMock()
     tokenizer.texts_to_sequences.return_value = [[1, 2, 3]]  # Simulated tokenized input
-    tokenizer.word_index = {"word1": 1, "word2": 2, "word3": 3}  # Simulated vocabulary (no word4)
+    tokenizer.word_index = {
+        "word1": 1,
+        "word2": 2,
+        "word3": 3,
+    }  # Simulated vocabulary (no word4)
 
     # Mock the model's behavior
     model = MagicMock()
-    model.predict.return_value = np.array([[0.1, 0.2, 0.3, 0.4]])  # Simulated prediction probabilities
+    # Simulated prediction probabilities
+    model.predict.return_value = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     # Call the function with a sample input
     result = predict_next_word(model, tokenizer, "The cat sat on", max_length=5)
 
     # Assert that the function returns `None`
     assert result is None
+
 
 def test_padding_sequences():
     """
@@ -86,6 +105,7 @@ def test_padding_sequences():
     assert (padded_sequences[0] == [0, 0, 0, 0, 1]).all()
     assert (padded_sequences[1] == [0, 0, 0, 1, 2]).all()
     assert (padded_sequences[2] == [0, 0, 1, 2, 3]).all()
+
 
 def test_one_hot_encoding():
     """

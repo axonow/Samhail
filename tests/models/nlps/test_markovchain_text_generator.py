@@ -2,14 +2,17 @@ import pytest
 import pandas as pd
 from models.nlps.markovchain_text_generator import MarkovChain
 
+
 @pytest.fixture
 def markov_chain():
     """Fixture to initialize the MarkovChain instance."""
     return MarkovChain()
 
+
 def test_init(markov_chain):
     assert isinstance(markov_chain.graph, dict)
     assert len(markov_chain.graph) == 0
+
 
 def test_tokenize(markov_chain):
     text = "Hello, world! 123"
@@ -31,6 +34,7 @@ def test_tokenize(markov_chain):
     tokens = markov_chain._tokenize(text)
     assert tokens == ["Hello", "world"]
 
+
 def test_train(markov_chain):
     text = "Hello world. Hello again."
     markov_chain._train(text)
@@ -48,6 +52,7 @@ def test_train(markov_chain):
     # markov_chain._train(text)
     # assert len(markov_chain.graph) == 1
     # assert markov_chain.graph["Hello"] == []
+
 
 def test_read_pd_csv(mocker, markov_chain):
     # Mock pandas.read_csv to simulate reading a CSV file
@@ -68,6 +73,7 @@ def test_read_pd_csv(mocker, markov_chain):
     result = markov_chain._read_pd_csv("dummy_path.csv")
     assert result == "Hello world"
 
+
 def test_generate(markov_chain):
     # Train the Markov Chain with sample text
     text = "Hello world. Hello again."
@@ -77,16 +83,20 @@ def test_generate(markov_chain):
     prompt = "Hello"
     generated_text = markov_chain._generate(prompt, length=5)
     assert generated_text.startswith("Hello")
-    assert len(generated_text.split()) >= 1  # Ensure at least one word is generated
+    # Ensure at least one word is generated
+    assert len(generated_text.split()) >= 1
 
     # Generate text with an invalid prompt
     prompt = "Invalid"
     generated_text = markov_chain._generate(prompt, length=5)
     assert generated_text == "Invalid"  # No transitions available
 
+
 def test_train_model(mocker, markov_chain):
     # Mock the _read_pd_csv method to return sample text
-    mocker.patch.object(markov_chain, "_read_pd_csv", return_value="Hello world. Hello again.")
+    mocker.patch.object(
+        markov_chain, "_read_pd_csv", return_value="Hello world. Hello again."
+    )
 
     # Train the model with mock CSV paths
     trained_model = markov_chain._train_model(csv_file_paths=["dummy_path.csv"])
@@ -101,9 +111,11 @@ def test_train_model(mocker, markov_chain):
     # assert "Hello" in trained_model.graph
     # assert trained_model.graph["Hello"] == ["world", "again"]
 
+
 def test_predict_next(mocker):
     # Mock the input function to simulate user input
-    mocker.patch("builtins.input", side_effect=["Hello", ""])  # Simulate two inputs: "Hello" and an empty string
+    # Simulate two inputs: "Hello" and an empty string
+    mocker.patch("builtins.input", side_effect=["Hello", ""])
 
     # Mock the MarkovChain methods
     mock_chain = MarkovChain()
@@ -111,10 +123,12 @@ def test_predict_next(mocker):
     mocker.patch.object(mock_chain, "_generate", return_value="Hello world again")
 
     # Mock the MarkovChain class to return the mocked instance
-    mocker.patch("models.nlps.markovchain_text_generator.MarkovChain", return_value=mock_chain)
+    mocker.patch(
+        "models.nlps.markovchain_text_generator.MarkovChain", return_value=mock_chain
+    )
 
     # Import and call the predict_next function
     from models.nlps.markovchain_text_generator import predict_next
+
     predict_next()  # Simulate input "Hello"
     predict_next()  # Simulate empty input
-    

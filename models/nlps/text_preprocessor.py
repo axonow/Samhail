@@ -1,8 +1,8 @@
 """
 Text Preprocessor Module
 
-This module provides a comprehensive set of tools for preprocessing text data. It includes functions for 
-cleaning, normalizing, augmenting, and analyzing text, making it suitable for a wide range of natural 
+This module provides a comprehensive set of tools for preprocessing text data. It includes functions for
+cleaning, normalizing, augmenting, and analyzing text, making it suitable for a wide range of natural
 language processing (NLP) tasks.
 
 ### Features:
@@ -62,7 +62,7 @@ language processing (NLP) tasks.
 ---
 
 ### Class: `TextPreprocessor`
-The `TextPreprocessor` class provides methods for preprocessing text data. It is initialized with a specified 
+The `TextPreprocessor` class provides methods for preprocessing text data. It is initialized with a specified
 language (default is English) for stopwords and lemmatization.
 
 #### Methods:
@@ -246,6 +246,7 @@ print("Synonyms for 'happy':", synonyms)
 social_media_text = preprocessor.normalize_social_media_text("OMG!!! I soooo love this!!! #amazing @user")
 print("Normalized Social Media Text:", social_media_text)
 """
+
 import re
 import string
 import random
@@ -261,16 +262,17 @@ from langdetect import detect
 from emoji import demojize
 
 # Download necessary NLTK data
-nltk.download('punkt')
-nltk.download('punkt_tab')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('averaged_perceptron_tagger_eng')
-nltk.download('omw-1.4')  # For WordNet synonyms
+nltk.download("punkt")
+nltk.download("punkt_tab")
+nltk.download("stopwords")
+nltk.download("wordnet")
+nltk.download("averaged_perceptron_tagger")
+nltk.download("averaged_perceptron_tagger_eng")
+nltk.download("omw-1.4")  # For WordNet synonyms
+
 
 class TextPreprocessor:
-    def __init__(self, language='english'):
+    def __init__(self, language="english"):
         """
         Initializes the TextPreprocessor with the specified language for stopwords and lemmatization.
 
@@ -281,7 +283,7 @@ class TextPreprocessor:
         self.stop_words = set(stopwords.words(language))
         self.stemmer = PorterStemmer()
         self.lemmatizer = WordNetLemmatizer()
-        self.nlp = spacy.load('en_core_web_sm')
+        self.nlp = spacy.load("en_core_web_sm")
 
     def to_lowercase(self, text):
         """Converts text to lowercase."""
@@ -293,7 +295,7 @@ class TextPreprocessor:
 
     def remove_punctuation(self, text):
         """Removes punctuation from text."""
-        return text.translate(str.maketrans('', '', string.punctuation))
+        return text.translate(str.maketrans("", "", string.punctuation))
 
     def remove_stopwords(self, tokens):
         """Removes stopwords from a list of tokens."""
@@ -309,7 +311,7 @@ class TextPreprocessor:
 
     def remove_numbers(self, text):
         """Removes numbers from text."""
-        return re.sub(r'\d+', '', text)
+        return re.sub(r"\d+", "", text)
 
     def handle_contractions(self, text):
         """Expands contractions in text."""
@@ -323,14 +325,14 @@ class TextPreprocessor:
             "'ll": " will",
             "'t": " not",
             "'ve": " have",
-            "'m": " am"
+            "'m": " am",
         }
-        pattern = re.compile(r'\b(' + '|'.join(contractions.keys()) + r')\b')
+        pattern = re.compile(r"\b(" + "|".join(contractions.keys()) + r")\b")
         return pattern.sub(lambda x: contractions[x.group()], text)
 
     def remove_special_characters(self, text):
         """Removes special characters from text."""
-        return re.sub(r'[^a-zA-Z\s]', '', text)
+        return re.sub(r"[^a-zA-Z\s]", "", text)
 
     def pos_tagging(self, tokens):
         """Performs parts of speech tagging on a list of tokens."""
@@ -341,7 +343,7 @@ class TextPreprocessor:
         doc = self.nlp(text)
         return [(ent.text, ent.label_) for ent in doc.ents]
 
-    def vectorize(self, corpus, method='tfidf'):
+    def vectorize(self, corpus, method="tfidf"):
         """
         Vectorizes a corpus using CountVectorizer or TfidfVectorizer.
 
@@ -352,9 +354,9 @@ class TextPreprocessor:
         Returns:
             sparse matrix: The vectorized representation of the corpus.
         """
-        if method == 'count':
+        if method == "count":
             vectorizer = CountVectorizer()
-        elif method == 'tfidf':
+        elif method == "tfidf":
             vectorizer = TfidfVectorizer()
         else:
             raise ValueError("Invalid method. Choose 'count' or 'tfidf'.")
@@ -366,7 +368,11 @@ class TextPreprocessor:
 
     def normalize(self, text):
         """Normalizes text by removing accents and converting to ASCII."""
-        return unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8', 'ignore')
+        return (
+            unicodedata.normalize("NFKD", text)
+            .encode("ascii", "ignore")
+            .decode("utf-8", "ignore")
+        )
 
     def handle_emojis(self, text):
         """Converts emojis to their textual representation."""
@@ -378,7 +384,7 @@ class TextPreprocessor:
 
     def handle_urls(self, text):
         """Removes URLs from text."""
-        return re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
+        return re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
 
     def sentence_segmentation(self, text):
         """Segments text into sentences."""
@@ -393,9 +399,9 @@ class TextPreprocessor:
             "idk": "I do not know",
             "imo": "in my opinion",
             "omg": "oh my god",
-            "lol": "laughing out loud"
+            "lol": "laughing out loud",
         }
-        pattern = re.compile(r'\b(' + '|'.join(abbreviations.keys()) + r')\b')
+        pattern = re.compile(r"\b(" + "|".join(abbreviations.keys()) + r")\b")
         return pattern.sub(lambda x: abbreviations[x.group()], text)
 
     def detect_language(self, text):
@@ -418,19 +424,22 @@ class TextPreprocessor:
         except Exception:
             return "unknown"  # Fallback for cases where detection fails
 
-    def encode_text(self, text, encoding='utf-8'):
+    def encode_text(self, text, encoding="utf-8"):
         """Encodes text to the specified encoding."""
         return text.encode(encoding)
 
     def handle_whitespace(self, text):
         """Removes extra whitespace from text."""
-        return ' '.join(text.split())
+        return " ".join(text.split())
 
     def handle_dates_and_times(self, text):
         """Removes dates and times from text."""
-        return re.sub(r'\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b\d{1,2}:\d{2}(?:\s?[APap][Mm])?\b', '', text)
-    
-    
+        return re.sub(
+            r"\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b\d{1,2}:\d{2}(?:\s?[APap][Mm])?\b",
+            "",
+            text,
+        )
+
     def text_augmentation(self, text):
         """
         Performs text augmentation by randomly replacing words with synonyms.
@@ -449,7 +458,7 @@ class TextPreprocessor:
                 augmented_tokens.append(random.choice(synonyms))
             else:
                 augmented_tokens.append(token)
-        return ' '.join(augmented_tokens)
+        return " ".join(augmented_tokens)
 
     def handle_negations(self, text):
         """
@@ -466,9 +475,9 @@ class TextPreprocessor:
             "not happy": "unhappy",
             "not bad": "good",
             "not like": "dislike",
-            "not love": "hate"
+            "not love": "hate",
         }
-        pattern = re.compile(r'\b(' + '|'.join(negations.keys()) + r')\b')
+        pattern = re.compile(r"\b(" + "|".join(negations.keys()) + r")\b")
         return pattern.sub(lambda x: negations[x.group()], text)
 
     def dependency_parsing(self, text):
@@ -496,7 +505,7 @@ class TextPreprocessor:
             list: A list of tokens with rare words handled.
         """
         word_freq = nltk.FreqDist(tokens)
-        return [token if word_freq[token] > threshold else '<RARE>' for token in tokens]
+        return [token if word_freq[token] > threshold else "<RARE>" for token in tokens]
 
     def text_chunking(self, text):
         """
@@ -516,7 +525,11 @@ class TextPreprocessor:
         """
         chunk_parser = nltk.RegexpParser(grammar)
         tree = chunk_parser.parse(pos_tags)
-        return [' '.join(leaf[0] for leaf in subtree.leaves()) for subtree in tree.subtrees() if subtree.label() in ['NP', 'VP']]
+        return [
+            " ".join(leaf[0] for leaf in subtree.leaves())
+            for subtree in tree.subtrees()
+            if subtree.label() in ["NP", "VP"]
+        ]
 
     def get_synonyms(self, word):
         """
@@ -529,6 +542,7 @@ class TextPreprocessor:
             list: A list of synonyms for the word.
         """
         from nltk.corpus import wordnet
+
         synonyms = []
         for syn in wordnet.synsets(word):
             for lemma in syn.lemmas():
@@ -546,9 +560,9 @@ class TextPreprocessor:
             str: The normalized text.
         """
         # Remove mentions
-        text = re.sub(r'@\w+', '', text)
+        text = re.sub(r"@\w+", "", text)
         # Remove hashtags
-        text = re.sub(r'#\w+', '', text)
+        text = re.sub(r"#\w+", "", text)
         # Replace repeated characters (e.g., "soooo" -> "so")
-        text = re.sub(r'(.)\1{2,}', r'\1', text)
+        text = re.sub(r"(.)\1{2,}", r"\1", text)
         return text.strip()

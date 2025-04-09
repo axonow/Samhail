@@ -7,6 +7,7 @@ from models.base_models.n_gram import NGramModel  # Import the NGramModel class
 # Test Suite for N-Gram Model
 # -------------------------------
 
+
 def test_ngram_model_initialization():
     """
     Test the initialization of the NGramModel.
@@ -21,6 +22,7 @@ def test_ngram_model_initialization():
     assert isinstance(ngram_model.total_counts, dict)
     assert len(ngram_model.ngram_counts) == 0
     assert len(ngram_model.total_counts) == 0
+
 
 def test_ngram_model_training():
     """
@@ -43,6 +45,7 @@ def test_ngram_model_training():
     assert ngram_model.total_counts[("cat", "sat")] == 1
     assert ngram_model.total_counts[("sat", "on")] == 1
 
+
 def test_ngram_model_prediction():
     """
     Test the prediction functionality of the NGramModel.
@@ -58,6 +61,7 @@ def test_ngram_model_prediction():
     predicted_word = ngram_model.predict(["the", "cat"])
     assert predicted_word in ["sat"]
 
+
 def test_ngram_model_prediction_no_data():
     """
     Test the prediction functionality when no data is available for the given context.
@@ -68,6 +72,7 @@ def test_ngram_model_prediction_no_data():
     ngram_model = NGramModel(n=3)
     predicted_word = ngram_model.predict(["unknown", "context"])
     assert predicted_word is None
+
 
 def test_ngram_model_training_with_multiple_sentences():
     """

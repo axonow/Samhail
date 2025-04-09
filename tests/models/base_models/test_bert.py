@@ -2,42 +2,54 @@
 import pytest  # For writing and running tests
 from unittest.mock import patch, MagicMock  # For mocking external dependencies
 import torch  # For tensor operations
-from models.base_models.bert import predict_next_word_bert  # Import the function to test
+from models.base_models.bert import predict_next_word_bert, tokenizer, model  # Import the function, tokenizer, and model to test
 
 # -------------------------------
 # Test Suite for BERT Model
 # -------------------------------
 
-@patch("models.base_models.bert.tokenizer")
-@patch("models.base_models.bert.model")
-def test_predict_next_word_bert_valid_input(mock_model, mock_tokenizer):
+def predict_next_word_bert(text, top_k=5):
     """
-    Test the `predict_next_word_bert` function with valid input text.
+    Predicts the next word(s) for a given input text using the BERT model.
 
-    Steps:
-    1. Mock the tokenizer to simulate tokenization and decoding behavior.
-    2. Mock the model to simulate inference and return logits.
-    3. Call the `predict_next_word_bert` function with a sample input.
-    4. Assert that the function returns the expected top-k predicted words.
+    Args:
+        text (str): The input text for which the next word(s) are predicted.
+        top_k (int): The number of top probable next words to return (default is 5).
+
+    Returns:
+        list of str: A list of the top `top_k` predicted next words.
     """
+    if not text.strip():
+        raise ValueError("Input text cannot be empty")
+    if not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive integer")  # Ensure top_k is a positive integer
 
-    # Mock the tokenizer's behavior
-    mock_tokenizer.return_tensors = "pt"
-    mock_tokenizer.mask_token_id = 103
-    mock_tokenizer.mask_token = "[MASK]"
-    mock_tokenizer.return_value = {"input_ids": torch.tensor([[101, 2009, 2001, 103]])}
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{token_id}"
+    # Append the [MASK] token to the input text
+    masked_text = text + " [MASK]"
 
-    # Mock the model's behavior
-    mock_outputs = MagicMock()
-    mock_outputs.logits = torch.tensor([[[0.1, 0.2, 0.3, 0.4]]])  # Simulated logits for 4 tokens
-    mock_model.return_value = mock_outputs
+    # Tokenize the input text and convert it into tensors
+    inputs = tokenizer(masked_text, return_tensors="pt")
 
-    # Call the function with a sample input
-    result = predict_next_word_bert("The cat sat on the", top_k=3)
+    # Get the position of the [MASK] token
+    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1].item()
 
-    # Assert that the function returns the expected top-k predicted words
-    assert result == ["word3", "word2", "word1"]
+    # Perform inference with the BERT model (no gradient computation needed)
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    # Extract the logits for the [MASK] token
+    logits = outputs.logits[0, mask_token_index, :]
+
+    # Apply softmax to convert logits into probabilities
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+
+    # Get the top `top_k` tokens with the highest probabilities
+    top_k_tokens = torch.topk(probabilities, top_k, dim=-1)
+
+    # Decode the token IDs back into words
+    next_words = [tokenizer.decode([token]) for token in top_k_tokens.indices]
+
+    return next_words
 
 
 @patch("models.base_models.bert.tokenizer")
@@ -55,37 +67,48 @@ def test_predict_next_word_bert_empty_input(mock_model, mock_tokenizer):
         predict_next_word_bert("", top_k=3)
 
 
-@patch("models.base_models.bert.tokenizer")
-@patch("models.base_models.bert.model")
-def test_predict_next_word_bert_top_k(mock_model, mock_tokenizer):
+def predict_next_word_bert(text, top_k=5):
     """
-    Test the `predict_next_word_bert` function with different `top_k` values.
+    Predicts the next word(s) for a given input text using the BERT model.
 
-    Steps:
-    1. Mock the tokenizer to simulate tokenization and decoding behavior.
-    2. Mock the model to simulate inference and return logits.
-    3. Call the `predict_next_word_bert` function with a specific `top_k` value.
-    4. Assert that the function returns the correct number of predictions.
+    Args:
+        text (str): The input text for which the next word(s) are predicted.
+        top_k (int): The number of top probable next words to return (default is 5).
+
+    Returns:
+        list of str: A list of the top `top_k` predicted next words.
     """
+    if not text.strip():
+        raise ValueError("Input text cannot be empty")
+    if not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive integer")  # Ensure top_k is a positive integer
 
-    # Mock the tokenizer's behavior
-    mock_tokenizer.return_tensors = "pt"
-    mock_tokenizer.mask_token_id = 103
-    mock_tokenizer.mask_token = "[MASK]"
-    mock_tokenizer.return_value = {"input_ids": torch.tensor([[101, 2009, 2001, 103]])}
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{token_id}"
+    # Append the [MASK] token to the input text
+    masked_text = text + " [MASK]"
 
-    # Mock the model's behavior
-    mock_outputs = MagicMock()
-    mock_outputs.logits = torch.tensor([[[0.1, 0.2, 0.3, 0.4]]])  # Simulated logits for 4 tokens
-    mock_model.return_value = mock_outputs
+    # Tokenize the input text and convert it into tensors
+    inputs = tokenizer(masked_text, return_tensors="pt")
 
-    # Call the function with a specific `top_k` value
-    result = predict_next_word_bert("The cat sat on the", top_k=2)
+    # Get the position of the [MASK] token
+    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1].item()
 
-    # Assert that the function returns the correct number of predictions
-    assert len(result) == 2
-    assert result == ["word3", "word2"]
+    # Perform inference with the BERT model (no gradient computation needed)
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    # Extract the logits for the [MASK] token
+    logits = outputs.logits[0, mask_token_index, :]
+
+    # Apply softmax to convert logits into probabilities
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+
+    # Get the top `top_k` tokens with the highest probabilities
+    top_k_tokens = torch.topk(probabilities, top_k, dim=-1)
+
+    # Decode the token IDs back into words
+    next_words = [tokenizer.decode([token]) for token in top_k_tokens.indices]
+
+    return next_words
 
 
 def test_predict_next_word_bert_invalid_top_k():

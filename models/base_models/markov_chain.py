@@ -1,10 +1,13 @@
 # Import necessary libraries
 import random  # For random sampling
-from collections import defaultdict  # For creating nested dictionaries with default values
+
+# For creating nested dictionaries with default values
+from collections import defaultdict
 
 # -------------------------------
 # Markov Chain Class Definition
 # -------------------------------
+
 
 class MarkovChain:
     """
@@ -19,8 +22,11 @@ class MarkovChain:
         - `transitions`: A nested dictionary to store word transition counts.
         - `total_counts`: A dictionary to store the total count of transitions for each word.
         """
-        self.transitions = defaultdict(lambda: defaultdict(int))  # Transition counts between words
-        self.total_counts = defaultdict(int)  # Total transition counts for each word
+        self.transitions = defaultdict(
+            lambda: defaultdict(int)
+        )  # Transition counts between words
+        # Total transition counts for each word
+        self.total_counts = defaultdict(int)
 
     def train(self, text):
         """
@@ -33,6 +39,7 @@ class MarkovChain:
         1. Splits the input text into words.
         2. Iterates through consecutive word pairs in the text.
         3. Updates the transition counts and total counts for each word.
+        Note: The last word in the text does not have a next word, so it is ignored.
 
         Example:
             Input: "the cat sat on the mat"
@@ -43,9 +50,21 @@ class MarkovChain:
                 - total_counts["cat"] += 1
         """
         words = text.split()  # Split the text into words
-        for i in range(len(words) - 1):  # Iterate through consecutive word pairs
-            self.transitions[words[i]][words[i + 1]] += 1  # Increment transition count
-            self.total_counts[words[i]] += 1  # Increment total count for the current word
+        for i in range(len(words) - 1):  # Iterate through all valid transitions
+            current_word = words[i]
+            next_word = words[i + 1]
+
+            # Update transitions
+            if current_word not in self.transitions:
+                self.transitions[current_word] = {}
+            if next_word not in self.transitions[current_word]:
+                self.transitions[current_word][next_word] = 0
+            self.transitions[current_word][next_word] += 1
+
+            # Update total counts
+            if current_word not in self.total_counts:
+                self.total_counts[current_word] = 0
+            self.total_counts[current_word] += 1
 
     def predict(self, current_word):
         """
@@ -71,16 +90,24 @@ class MarkovChain:
         if current_word not in self.transitions:
             return None  # No prediction available if the word is not in the model
 
-        next_words = self.transitions[current_word]  # Get possible next words and their counts
-        total = self.total_counts[current_word]  # Get the total count for the current word
-        probabilities = {word: count / total for word, count in next_words.items()}  # Calculate probabilities
+        # Get possible next words and their counts
+        next_words = self.transitions[current_word]
+        # Get the total count for the current word
+        total = self.total_counts[current_word]
+        probabilities = {
+            word: count / total for word, count in next_words.items()
+        }  # Calculate probabilities
 
         # Randomly select the next word based on the probabilities
-        return random.choices(list(probabilities.keys()), weights=probabilities.values())[0]
+        return random.choices(
+            list(probabilities.keys()), weights=probabilities.values()
+        )[0]
+
 
 # -------------------------------
 # Example Usage
 # -------------------------------
+
 
 # Define a sample text for training
 text = "the cat sat on the mat the cat jumped over the mat"

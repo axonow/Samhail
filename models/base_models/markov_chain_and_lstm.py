@@ -4,6 +4,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Embedding, Dropout
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import LearningRateScheduler
+from tensorflow.keras.preprocessing.text import Tokenizer
 
 # -------------------------------
 # Training Data Preparation
@@ -22,7 +23,7 @@ sequences = [
     ["the", "dog", "chased", "the", "cat", "away"],
     ["the", "bird", "sang", "a", "beautiful", "song"],
     ["the", "fish", "jumped", "out", "of", "the", "water"],
-    ["the", "tree", "grew", "tall", "and", "strong"]
+    ["the", "tree", "grew", "tall", "and", "strong"],
 ]
 
 # Tokenize the words in the dataset
@@ -44,12 +45,12 @@ y = []
 for seq in encoded_sequences:
     for i in range(1, len(seq)):
         X.append(seq[:i])  # Input is the sequence up to the current word
-        y.append(seq[i])   # Output is the next word
+        y.append(seq[i])  # Output is the next word
 
 # Pad the input sequences to ensure consistent input length
 # Pads input sequences (X) with zeros at the beginning to make them the same length.
 # Converts the output list (y) into a NumPy array for compatibility with TensorFlow.
-X = pad_sequences(X, padding='pre')
+X = pad_sequences(X, padding="pre")
 y = np.array(y)
 
 # -------------------------------
@@ -61,17 +62,25 @@ y = np.array(y)
 # 1. Embedding: Converts word indices into dense vector representations.
 # 2. LSTM: A recurrent layer with 100 units for learning sequential patterns.
 # 3. Dense: Fully connected output layer with softmax activation for multi-class classification.
-model = Sequential([
-    Embedding(input_dim=len(word_to_index), output_dim=50),  # Embedding layer with 50-dimensional vectors
-    LSTM(100, return_sequences=False, dropout=0.2, recurrent_dropout=0.2),  # LSTM layer with dropout
-    Dense(len(word_to_index), activation='softmax')  # Output layer with softmax activation
-])
+model = Sequential(
+    [
+        # Embedding layer with 50-dimensional vectors
+        Embedding(input_dim=len(word_to_index), output_dim=50),
+        LSTM(
+            100, return_sequences=False, dropout=0.2, recurrent_dropout=0.2
+        ),  # LSTM layer with dropout
+        # Output layer with softmax activation
+        Dense(len(word_to_index), activation="softmax"),
+    ]
+)
 
 # Compile the model
 # Loss: sparse_categorical_crossentropy for multi-class classification.
 # Optimizer: Adam for adaptive learning rate optimization.
 # Metrics: Accuracy to monitor training performance.
-model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.compile(
+    loss="sparse_categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
+)
 
 # -------------------------------
 # Learning Rate Scheduler
@@ -79,11 +88,14 @@ model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=
 
 # Define a learning rate scheduler to dynamically adjust the learning rate during training
 # The learning rate remains constant for the first 100 epochs and decreases by 1% after each subsequent epoch.
+
+
 def scheduler(epoch, lr):
     if epoch < 100:
         return lr
     else:
         return lr * 0.99
+
 
 # Create a learning rate scheduler callback
 lr_scheduler = LearningRateScheduler(scheduler)
@@ -111,20 +123,74 @@ model.fit(X, y, epochs=500, verbose=1, callbacks=[lr_scheduler])
 # 2. Pads the input to match the model's input shape.
 # 3. Predicts the next word's probabilities using the trained model.
 # 4. Finds the word with the highest probability (argmax) and returns it.
-def predict_next_word(seed_phrase):
-    seed_encoded = [word_to_index[word] for word in seed_phrase.split()]  # Convert words to indices
-    seed_encoded = pad_sequences([seed_encoded], maxlen=X.shape[1], padding='pre')  # Pad the input
-    predicted_probs = model.predict(seed_encoded)  # Predict probabilities
-    predicted_index = np.argmax(predicted_probs, axis=-1)  # Get the index of the highest probability
-    return index_to_word[predicted_index[0]]  # Convert the index back to a word
+
+
+def predict_next_word(input_text, model, tokenizer, index_to_word, max_length):
+    """
+    Predicts the next word for a given input text using the LSTM model.
+
+    Args:
+        input_text (str): The input text for which the next word is predicted.
+        model: The trained LSTM model.
+        tokenizer: The tokenizer used for text preprocessing.
+        index_to_word (dict): Mapping from indices to words.
+        max_length (int): The maximum length of the input sequence.
+
+    Returns:
+        str: The predicted next word.
+    """
+
+    # Convert each subarray of words into a sentence
+    sentences = [" ".join(subarray) for subarray in sequences]
+
+    # Initialize the tokenizer and fit it on some sample text
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(sentences)
+
+    # Tokenize the input text
+    sequence = tokenizer.texts_to_sequences([input_text])[0]
+
+    # Pad the sequence to the required length
+    padded_sequence = pad_sequences([sequence], maxlen=max_length, padding="pre")
+
+    # Perform inference with the model
+    prediction = model.predict(padded_sequence)
+
+    # Get the index of the word with the highest probability
+    predicted_index = np.argmax(prediction)
+
+    # Map the index to the corresponding word
+    return index_to_word.get(predicted_index, None)
+
 
 # -------------------------------
 # Example Predictions
 # -------------------------------
 
+
 # Demonstrate the model's ability to predict the next word for given seed phrases
 # The expected output depends on the training data and the learned probabilities.
-print(predict_next_word("the cat"))  # Expected output: "sat" or "jumped"
-print(predict_next_word("the dog"))  # Expected output: "barked" or "chased"
-print(predict_next_word("the bird"))  # Expected output: "flew" or "sang"
-print(predict_next_word("the fish"))  # Expected output: "swam" or "jumped"
+print(
+    "Predicted next word for 'the cat sat on':",
+    predict_next_word(
+        "the cat sat on", model, word_to_index, index_to_word, max_length=5
+    ),
+)
+print(
+    "Predicted next word for 'the dog chased':",
+    predict_next_word(
+        "the dog chased", model, word_to_index, index_to_word, max_length=5
+    ),
+)
+print(
+    "Predicted next word for 'the bird sang':",
+    predict_next_word(
+        "the bird sang", model, word_to_index, index_to_word, max_length=5
+    ),
+)
+print(
+    "Predicted next word for 'the fish jumped':",
+    predict_next_word(
+        "the fish jumped", model, word_to_index, index_to_word, max_length=5
+    ),
+)

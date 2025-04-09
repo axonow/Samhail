@@ -1,6 +1,9 @@
 # Import necessary libraries
 import random  # For random sampling
-from collections import defaultdict  # For creating nested dictionaries with default values
+
+# For creating nested dictionaries with default values
+from collections import defaultdict
+
 
 class NGramModel:
     """
@@ -25,8 +28,10 @@ class NGramModel:
                 Example: total_counts[("the", "cat")] = 5
         """
         self.n = n
-        self.ngram_counts = defaultdict(lambda: defaultdict(int))  # Transition counts for N-grams
-        self.total_counts = defaultdict(int)  # Total transition counts for each (n-1)-gram
+        # Transition counts for N-grams
+        self.ngram_counts = defaultdict(lambda: defaultdict(int))
+        # Total transition counts for each (n-1)-gram
+        self.total_counts = defaultdict(int)
 
     def train(self, text):
         """
@@ -50,10 +55,13 @@ class NGramModel:
         """
         words = text.split()  # Split the text into words
         for i in range(len(words) - self.n + 1):  # Iterate through consecutive N-grams
-            ngram = tuple(words[i:i+self.n-1])  # Take the last (n-1) words as the N-gram
-            next_word = words[i+self.n-1]  # The next word to predict
-            self.ngram_counts[ngram][next_word] += 1  # Increment transition count
-            self.total_counts[ngram] += 1  # Increment total count for the N-gram
+            # Take the last (n-1) words as the N-gram
+            ngram = tuple(words[i : i + self.n - 1])
+            next_word = words[i + self.n - 1]  # The next word to predict
+            # Increment transition count
+            self.ngram_counts[ngram][next_word] += 1
+            # Increment total count for the N-gram
+            self.total_counts[ngram] += 1
 
     def predict(self, words):
         """
@@ -77,20 +85,29 @@ class NGramModel:
                 - Probabilities: {"sat": 2/3, "jumped": 1/3}
                 - Randomly selects "sat" or "jumped" based on these probabilities.
         """
-        words = tuple(words[-(self.n-1):])  # Take the last (n-1) words
+        words = tuple(words[-(self.n - 1) :])  # Take the last (n-1) words
         if words not in self.ngram_counts:
-            return None  # No prediction available if the (n-1) words are not in the model
+            # No prediction available if the (n-1) words are not in the model
+            return None
 
-        next_words = self.ngram_counts[words]  # Get possible next words and their counts
-        total = self.total_counts[words]  # Get the total count for the (n-1) words
-        probabilities = {word: count / total for word, count in next_words.items()}  # Calculate probabilities
+        # Get possible next words and their counts
+        next_words = self.ngram_counts[words]
+        # Get the total count for the (n-1) words
+        total = self.total_counts[words]
+        probabilities = {
+            word: count / total for word, count in next_words.items()
+        }  # Calculate probabilities
 
         # Randomly select the next word based on the probabilities
-        return random.choices(list(probabilities.keys()), weights=probabilities.values())[0]
+        return random.choices(
+            list(probabilities.keys()), weights=probabilities.values()
+        )[0]
+
 
 # -------------------------------
 # Example Usage
 # -------------------------------
+
 
 # Define a sample text for training
 text = "the cat sat on the mat the cat jumped over the mat"

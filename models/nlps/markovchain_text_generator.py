@@ -1,4 +1,3 @@
-
 """
 MarkovChain Text Generator
 
@@ -51,6 +50,7 @@ Limitations:
     - The `_generate` method assumes that the graph has been trained before generating text.
 
 """
+
 import os
 
 # The `random` module is used to randomly select the next word during text generation.
@@ -71,17 +71,18 @@ from collections import defaultdict
 # Specifically, `pandas.read_csv` is used to load CSV data, and `pandas.DataFrame` is used to create and manipulate tabular data.
 import pandas as pd
 
+
 class MarkovChain:
     def __init__(self):
         """
         Initializes the MarkovChain instance.
 
-        This constructor sets up the Markov Chain graph as a `defaultdict` of lists. 
-        Each key in the graph represents a word, and the corresponding value is a list 
+        This constructor sets up the Markov Chain graph as a `defaultdict` of lists.
+        Each key in the graph represents a word, and the corresponding value is a list
         of words that can follow it based on the training data.
 
         Attributes:
-            graph (defaultdict): A dictionary where each key is a word and the value 
+            graph (defaultdict): A dictionary where each key is a word and the value
                                 is a list of possible next words.
         """
         self.graph = defaultdict(list)
@@ -116,11 +117,11 @@ class MarkovChain:
             - It does not handle special cases like non-ASCII characters or text with mixed encodings.
         """
         # Remove punctuation and numeric characters
-        text = ''.join(char for char in text if char.isalpha() or char.isspace())
+        text = "".join(char for char in text if char.isalpha() or char.isspace())
         # Split into words and filter out empty strings
         tokens = [word for word in text.split() if word]
         return tokens
-    
+
     def _train(self, text):
         """
         Trains the Markov Chain model by building a graph of word transitions from the input text.
@@ -155,7 +156,7 @@ class MarkovChain:
         tokens = self._tokenize(text)
         for i in range(len(tokens) - 1):
             self.graph[tokens[i]].append(tokens[i + 1])
-    
+
     def _read_pd_csv(self, csv_file_path, header=None):
         """
         Reads a CSV file into a pandas DataFrame and converts the first column to a single string.
@@ -190,8 +191,8 @@ class MarkovChain:
         """
         try:
             # Read the CSV file into a DataFrame
-            df = pd.read_csv(csv_file_path, encoding='UTF-8', header=header)
-            
+            df = pd.read_csv(csv_file_path, encoding="UTF-8", header=header)
+
             # Convert the first column to a string with rows separated by "\n"
             # First column is the comment, the second being sentiment
             first_column_as_string = "\n".join(df.iloc[:, 0].astype(str))
@@ -199,29 +200,31 @@ class MarkovChain:
         except Exception as e:
             print(f"Error processing CSV file at {csv_file_path}: {e}")
             raise
-    
-    # Define the base directory as the root of the project
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-   # Define constants for CSV file paths
+    # Define the base directory as the root of the project
+    BASE_DIR = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+
+    # Define constants for CSV file paths
     CSV_FILE_PATHS = [
         os.path.join(BASE_DIR, "csv_datasets", "markov_chain_impression_dataset.csv"),
         os.path.join(BASE_DIR, "csv_datasets", "reddit_social_media_comments.csv"),
         os.path.join(BASE_DIR, "csv_datasets", "twitter_social_media_comments.csv"),
         os.path.join(BASE_DIR, "csv_datasets", "imdb_movie_reviews.csv"),
-        os.path.join(BASE_DIR, "csv_datasets", "dcat_train_data.csv"),    
+        os.path.join(BASE_DIR, "csv_datasets", "dcat_train_data.csv"),
     ]
-               
+
     def _generate(self, prompt, length=10):
         """
         Generates a sequence of text based on the trained Markov Chain and a given prompt.
 
-        This method uses the Markov Chain graph to generate a sequence of words. It starts with the 
-        last word in the given prompt and iteratively selects the next word based on the possible 
+        This method uses the Markov Chain graph to generate a sequence of words. It starts with the
+        last word in the given prompt and iteratively selects the next word based on the possible
         transitions in the graph. The process continues until the desired sequence length is reached.
 
         Args:
-            prompt (str): The initial text to start the generation. The last word of the prompt is 
+            prompt (str): The initial text to start the generation. The last word of the prompt is
                         used as the starting point for the generation.
             length (int): The number of words to generate in the sequence (default is 10).
 
@@ -230,9 +233,9 @@ class MarkovChain:
 
         Notes:
             - The `_tokenize` method is used to extract the last word from the prompt.
-            - The `random.choice` method is used to randomly select the next word from the list of 
+            - The `random.choice` method is used to randomly select the next word from the list of
             possible transitions for the current word.
-            - If no transitions are available for the current word, the generation process skips to 
+            - If no transitions are available for the current word, the generation process skips to
             the next iteration without adding a new word.
         """
         # Get the last token from the prompt
@@ -248,14 +251,14 @@ class MarkovChain:
             current = random.choice(options)
             # Add the selected word to the output
             output += f" {current}"
-        
+
         return output
 
     def _train_model(self, csv_file_paths=CSV_FILE_PATHS, csv_header=None):
         """
         Trains the Markov Chain model using text data from multiple CSV files.
 
-        This method reads text data from the specified CSV file paths, processes the first column 
+        This method reads text data from the specified CSV file paths, processes the first column
         of each file into a single string, and trains a Markov Chain model using the combined text.
 
         Args:
@@ -283,7 +286,8 @@ class MarkovChain:
             self._train(text)
             return self
 
-def predict_next(user_input='A cat'):
+
+def predict_next(user_input="A cat"):
     """
     Trains the Markov Chain model and generates text based on user input.
     """
@@ -293,6 +297,6 @@ def predict_next(user_input='A cat'):
         user_input = input("Enter a prompt: ")
     print(trained_model._generate(user_input, length=10))
 
+
 # Predict next word based on user input
 predict_next()
-
