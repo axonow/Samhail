@@ -121,20 +121,34 @@ model.fit(X, y, epochs=500, verbose=1)
 # 3. Predicts the probabilities of the next word using the trained model.
 # 4. Finds the word with the highest probability and returns it.
 def predict_next_word(model, tokenizer, text, max_length):
-    # Convert the input text into a sequence of indices
+    """
+    Predicts the next word for a given input text using the LSTM model.
+
+    Args:
+        model: The trained LSTM model.
+        tokenizer: The tokenizer used for text preprocessing.
+        text (str): The input text for which the next word is predicted.
+        max_length (int): The maximum length of the input sequence.
+
+    Returns:
+        str or None: The predicted next word, or None if no prediction is found.
+    """
+    # Tokenize the input text and pad the sequence
     sequence = tokenizer.texts_to_sequences([text])[0]
-    
-    # Pad the sequence to match the model's input length
-    sequence = pad_sequences([sequence], maxlen=max_length-1, padding='pre')
-    
-    # Predict the probabilities of the next word
-    predicted_index = np.argmax(model.predict(sequence), axis=-1)[0]
-    
-    # Find the word corresponding to the predicted index
-    for word, index in tokenizer.word_index.items():
-        if index == predicted_index:
-            return word  # Return the predicted word
-    return None  # Return None if no word is found
+    sequence = sequence[-(max_length - 1):]  # Ensure the sequence length is within the limit
+    padded_sequence = np.pad(sequence, (max_length - len(sequence), 0), mode="constant")
+
+    # Perform inference with the LSTM model
+    prediction = model.predict(np.array([padded_sequence]))
+
+    # Get the index of the word with the highest probability
+    predicted_index = np.argmax(prediction) + 1  # Add 1 to align with tokenizer's word_index
+
+    # Reverse the tokenizer's word_index to get index_word mapping
+    index_word = {index: word for word, index in tokenizer.word_index.items()}
+
+    # Return the predicted word, or None if the index is not in the vocabulary
+    return index_word.get(predicted_index, None)
 
 # -------------------------------
 # Example Prediction
