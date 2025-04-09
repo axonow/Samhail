@@ -1,5 +1,6 @@
 # Import necessary libraries
-from transformers import BertTokenizer, BertForMaskedLM  # For loading the BERT model and tokenizer
+# For loading the BERT model and tokenizer
+from transformers import BertTokenizer, BertForMaskedLM
 import torch  # For tensor operations and model inference
 import logging  # For suppressing warnings
 
@@ -32,6 +33,7 @@ model.eval()  # Set the model to evaluation mode (disables dropout, etc.)
 # Prediction Function
 # -------------------------------
 
+
 def predict_next_word_bert(text, top_k=5):
     """
     Predicts the next word(s) for a given input text using the BERT model.
@@ -59,7 +61,8 @@ def predict_next_word_bert(text, top_k=5):
     if not text.strip():
         raise ValueError("Input text cannot be empty")
     if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("top_k must be a positive integer") # Ensure top_k is a positive integer
+        # Ensure top_k is a positive integer
+        raise ValueError("top_k must be a positive integer")
 
     # Append the [MASK] token to the input text
     masked_text = text + " [MASK]"
@@ -88,13 +91,18 @@ def predict_next_word_bert(text, top_k=5):
 
     return next_words
 
+
 # -------------------------------
 # Example Predictions
 # -------------------------------
 
+
 if __name__ == "__main__":
     # Predict the next word(s) for various input texts
     # The predictions are based on the context provided in the input text.
-    print(predict_next_word_bert("The cat sat on the"))  # Example output: ["mat", "floor", "sofa", "chair", "bed"]
-    print(predict_next_word_bert("Deep learning is"))  # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
-    print(predict_next_word_bert("Transformers are revolutionizing"))  # Example output: ["AI", "technology", "NLP", "research", "science"]
+    # Example output: ["mat", "floor", "sofa", "chair", "bed"]
+    print(predict_next_word_bert("The cat sat on the"))
+    # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
+    print(predict_next_word_bert("Deep learning is"))
+    # Example output: ["AI", "technology", "NLP", "research", "science"]
+    print(predict_next_word_bert("Transformers are revolutionizing"))

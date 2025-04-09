@@ -8,6 +8,7 @@ import torch  # For tensor operations
 # Test Suite for GPT-2 Prediction Function
 # -------------------------------
 
+
 @patch("models.base_models.gpt2.tokenizer")
 @patch("models.base_models.gpt2.model")
 def test_predict_next_word(mock_model, mock_tokenizer):
@@ -28,11 +29,17 @@ def test_predict_next_word(mock_model, mock_tokenizer):
     mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
     mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
     # Simulate decoding behavior for token IDs
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{int(token_id[0])}" if isinstance(token_id, list) else f"word{int(token_id)}"
+    mock_tokenizer.decode.side_effect = lambda token_id: (
+        f"word{int(token_id[0])}"
+        if isinstance(token_id, list)
+        else f"word{int(token_id)}"
+    )
 
     # Mock the model's behavior
     mock_outputs = MagicMock()
-    mock_outputs.logits = torch.tensor([[[0.1, 0.2, 0.3, 0.4, 0.5]]])  # Simulated logits
+    mock_outputs.logits = torch.tensor(
+        [[[0.1, 0.2, 0.3, 0.4, 0.5]]]
+    )  # Simulated logits
     mock_model.return_value = mock_outputs
 
     # Call the function with a sample input
@@ -40,8 +47,10 @@ def test_predict_next_word(mock_model, mock_tokenizer):
 
     # Assert that the function returns the expected top-k predictions
     assert result == ["word4", "word3", "word2"]  # Expected decoded words
-    mock_tokenizer.assert_called_once_with("The cat sat on the", return_tensors="pt")  # Ensure tokenizer is called correctly
+    # Ensure tokenizer is called correctly
+    mock_tokenizer.assert_called_once_with("The cat sat on the", return_tensors="pt")
     mock_model.assert_called_once()  # Ensure the model is called once
+
 
 def test_predict_next_word_invalid_input():
     """
@@ -54,6 +63,7 @@ def test_predict_next_word_invalid_input():
     # Assert that a ValueError is raised for empty input
     with pytest.raises(ValueError, match="Input text cannot be empty"):
         predict_next_word("")
+
 
 @patch("models.base_models.gpt2.tokenizer")
 @patch("models.base_models.gpt2.model")
@@ -75,11 +85,17 @@ def test_predict_next_word_top_k(mock_model, mock_tokenizer):
     mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
     mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
     # Simulate decoding behavior for token IDs
-    mock_tokenizer.decode.side_effect = lambda token_id: f"word{int(token_id[0])}" if isinstance(token_id, list) else f"word{int(token_id)}"
+    mock_tokenizer.decode.side_effect = lambda token_id: (
+        f"word{int(token_id[0])}"
+        if isinstance(token_id, list)
+        else f"word{int(token_id)}"
+    )
 
     # Mock the model's behavior
     mock_outputs = MagicMock()
-    mock_outputs.logits = torch.tensor([[[0.1, 0.2, 0.3, 0.4, 0.5]]])  # Simulated logits
+    mock_outputs.logits = torch.tensor(
+        [[[0.1, 0.2, 0.3, 0.4, 0.5]]]
+    )  # Simulated logits
     mock_model.return_value = mock_outputs
 
     # Call the function with a specific `top_k` value

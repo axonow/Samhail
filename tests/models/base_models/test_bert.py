@@ -2,11 +2,14 @@
 import pytest  # For writing and running tests
 from unittest.mock import patch, MagicMock  # For mocking external dependencies
 import torch  # For tensor operations
-from models.base_models.bert import predict_next_word_bert, tokenizer, model  # Import the function, tokenizer, and model to test
+
+# Import the function, tokenizer, and model to test
+from models.base_models.bert import predict_next_word_bert, tokenizer, model
 
 # -------------------------------
 # Test Suite for BERT Model
 # -------------------------------
+
 
 def predict_next_word_bert(text, top_k=5):
     """
@@ -22,7 +25,8 @@ def predict_next_word_bert(text, top_k=5):
     if not text.strip():
         raise ValueError("Input text cannot be empty")
     if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("top_k must be a positive integer")  # Ensure top_k is a positive integer
+        # Ensure top_k is a positive integer
+        raise ValueError("top_k must be a positive integer")
 
     # Append the [MASK] token to the input text
     masked_text = text + " [MASK]"
@@ -31,7 +35,9 @@ def predict_next_word_bert(text, top_k=5):
     inputs = tokenizer(masked_text, return_tensors="pt")
 
     # Get the position of the [MASK] token
-    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1].item()
+    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[
+        1
+    ].item()
 
     # Perform inference with the BERT model (no gradient computation needed)
     with torch.no_grad():
@@ -81,7 +87,8 @@ def predict_next_word_bert(text, top_k=5):
     if not text.strip():
         raise ValueError("Input text cannot be empty")
     if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("top_k must be a positive integer")  # Ensure top_k is a positive integer
+        # Ensure top_k is a positive integer
+        raise ValueError("top_k must be a positive integer")
 
     # Append the [MASK] token to the input text
     masked_text = text + " [MASK]"
@@ -90,7 +97,9 @@ def predict_next_word_bert(text, top_k=5):
     inputs = tokenizer(masked_text, return_tensors="pt")
 
     # Get the position of the [MASK] token
-    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1].item()
+    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[
+        1
+    ].item()
 
     # Perform inference with the BERT model (no gradient computation needed)
     with torch.no_grad():

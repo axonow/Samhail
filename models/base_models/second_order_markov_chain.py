@@ -1,6 +1,9 @@
 # Import necessary libraries
 import random  # For random sampling
-from collections import defaultdict  # For creating nested dictionaries with default values
+
+# For creating nested dictionaries with default values
+from collections import defaultdict
+
 
 class SecondOrderMarkovChain:
     """
@@ -18,8 +21,11 @@ class SecondOrderMarkovChain:
           for each pair of consecutive words.
             Example: total_counts["the"]["cat"] = 5
         """
-        self.transitions = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # Transition counts
-        self.total_counts = defaultdict(lambda: defaultdict(int))  # Total transition counts for word pairs
+        self.transitions = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(int))
+        )  # Transition counts
+        # Total transition counts for word pairs
+        self.total_counts = defaultdict(lambda: defaultdict(int))
 
     def train(self, text):
         """
@@ -43,9 +49,12 @@ class SecondOrderMarkovChain:
         """
         words = text.split()  # Split the text into words
         for i in range(len(words) - 2):  # Iterate through consecutive triplets of words
-            prev1, prev2, next_word = words[i], words[i+1], words[i+2]  # Extract the triplet
-            self.transitions[prev1][prev2][next_word] += 1  # Increment transition count
-            self.total_counts[prev1][prev2] += 1  # Increment total count for the word pair
+            # Extract the triplet
+            prev1, prev2, next_word = words[i], words[i + 1], words[i + 2]
+            # Increment transition count
+            self.transitions[prev1][prev2][next_word] += 1
+            # Increment total count for the word pair
+            self.total_counts[prev1][prev2] += 1
 
     def predict(self, word1, word2):
         """
@@ -72,16 +81,24 @@ class SecondOrderMarkovChain:
         if word1 not in self.transitions or word2 not in self.transitions[word1]:
             return None  # No prediction available if the word pair is not in the model
 
-        next_words = self.transitions[word1][word2]  # Get possible next words and their counts
-        total = self.total_counts[word1][word2]  # Get the total count for the word pair
-        probabilities = {word: count / total for word, count in next_words.items()}  # Calculate probabilities
+        # Get possible next words and their counts
+        next_words = self.transitions[word1][word2]
+        # Get the total count for the word pair
+        total = self.total_counts[word1][word2]
+        probabilities = {
+            word: count / total for word, count in next_words.items()
+        }  # Calculate probabilities
 
         # Randomly select the next word based on the probabilities
-        return random.choices(list(probabilities.keys()), weights=probabilities.values())[0]
+        return random.choices(
+            list(probabilities.keys()), weights=probabilities.values()
+        )[0]
+
 
 # -------------------------------
 # Example Usage
 # -------------------------------
+
 
 # Define a sample text for training
 text = "the cat sat on the mat the cat jumped over the mat"

@@ -1,10 +1,13 @@
 # Import necessary libraries
 import pytest  # For writing and running tests
-from models.base_models.second_order_markov_chain import SecondOrderMarkovChain  # Import the class to test
+
+# Import the class to test
+from models.base_models.second_order_markov_chain import SecondOrderMarkovChain
 
 # -------------------------------
 # Test Suite for SecondOrderMarkovChain
 # -------------------------------
+
 
 def test_initialization():
     """
@@ -18,6 +21,7 @@ def test_initialization():
     assert isinstance(mc.total_counts, dict)
     assert len(mc.transitions) == 0
     assert len(mc.total_counts) == 0
+
 
 def test_training():
     """
@@ -40,6 +44,7 @@ def test_training():
     assert mc.total_counts["cat"]["sat"] == 1
     assert mc.total_counts["sat"]["on"] == 1
 
+
 def test_prediction():
     """
     Test the prediction functionality of the SecondOrderMarkovChain.
@@ -55,6 +60,7 @@ def test_prediction():
     predicted_word = mc.predict("the", "cat")
     assert predicted_word in ["sat"]
 
+
 def test_prediction_no_data():
     """
     Test the prediction functionality when no data is available for the given context.
@@ -65,6 +71,7 @@ def test_prediction_no_data():
     mc = SecondOrderMarkovChain()
     predicted_word = mc.predict("unknown", "context")
     assert predicted_word is None
+
 
 def test_training_with_multiple_sentences():
     """
@@ -86,6 +93,7 @@ def test_training_with_multiple_sentences():
     assert mc.total_counts["the"]["cat"] == 1
     assert mc.total_counts["the"]["dog"] == 1
     assert mc.total_counts["dog"]["barked"] == 1
+
 
 def test_prediction_with_multiple_options():
     """

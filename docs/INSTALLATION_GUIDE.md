@@ -133,7 +133,16 @@ tests/models/base_models/test_bayesian_network.py::test_bayesian_network_structu
 tests/models/base_models/test_bayesian_network.py::test_bayesian_network_cpds PASSED [  2%]                                                                                                                                                  
 tests/models/base_models/test_bayesian_network.py::test_bayesian_network_inference PASSED [  4%]                                                                                                                                           
 tests/models/base_models/test_bayesian_network.py::test_bayesian_network_invalid_model PASSED [  5%]
-```    
+```
+
+8. **Run `pylint` for Linting, `autopep8` for autofixing issues and `black` for reformatting**
+-----------------------------
+
+1.  `python -m autopep8 --in-place --recursive models/ tests/`
+
+2.  `python -m black models/ tests/`
+
+3.  `python -m pylint models/ tests/`
     
 *   If you encounter any issues with TensorFlow or PyTorch, ensure that your MacOS has the necessary hardware support (e.g., GPU drivers).
 
