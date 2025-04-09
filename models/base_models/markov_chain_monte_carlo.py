@@ -121,15 +121,27 @@ model.fit(X, y, epochs=500, verbose=1)
 # 3. Predicts the probabilities of the next word using the trained model.
 # 4. Finds the word with the highest probability and returns it.
 def predict_next_word(model, tokenizer, text, max_length):
+    """
+    Predicts the next word for a given input text using the model.
+
+    Args:
+        model: The trained model.
+        tokenizer: The tokenizer used for text preprocessing.
+        text (str): The input text for which the next word is predicted.
+        max_length (int): The maximum length of the input sequence.
+
+    Returns:
+        str: The predicted next word, or None if no word is found.
+    """
     # Convert the input text into a sequence of indices
     sequence = tokenizer.texts_to_sequences([text])[0]
-    
+
     # Pad the sequence to match the model's input length
-    sequence = pad_sequences([sequence], maxlen=max_length-1, padding='pre')
-    
+    sequence = pad_sequences([sequence], maxlen=max_length - 1, padding="pre")
+
     # Predict the probabilities of the next word
-    predicted_index = np.argmax(model.predict(sequence), axis=-1)[0]
-    
+    predicted_index = np.argmax(model.predict(sequence), axis=-1)[0] + 1  # Adjust for 1-based indexing
+
     # Find the word corresponding to the predicted index
     for word, index in tokenizer.word_index.items():
         if index == predicted_index:
