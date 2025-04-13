@@ -57,7 +57,7 @@ eval "$(pyenv init -)"
 
 4.5 Rehash `pyenv` using `pyenv rehash`
 
-5. **Install Python Dependencies for Anaconda Environment**
+5. **Install Python Dependencies for Python Environment**
 ----------------------------------
 
 5.1.  Update pip using `python -m pip install --upgrade pip`
@@ -76,7 +76,7 @@ python -m pip install --no-cache-dir -r requirements.txt
 6.2.  Verify the installation by running: `code --version`
     
 
-7. **Configure Conda Python in Visual Studio Code**
+7. **Configure Python in Visual Studio Code**
 ---------------------------------------------------
 
 7.1.  Open Visual Studio Code.
