@@ -49,7 +49,7 @@ The **Samhail** project is a comprehensive framework for building, validating,
     *   Ensure dependency installation and environment setup are consistent in CI pipelines.
         
 
-### **Models Implemented**
+### **Base Models Implemented**
 
 1.  **Bayesian Network**:
     
@@ -81,7 +81,10 @@ The **Samhail** project is a comprehensive framework for building, validating,
         
     *   Used for next-word prediction and contextual understanding.
         
-6.  **Text Preprocessor**:
+
+###  Utilities Implemented
+
+1.  **Text Preprocessor**:
     
     *   Comprehensive NLP pipeline for preprocessing text data.
         

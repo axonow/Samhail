@@ -226,3 +226,4 @@ def test_normalize_social_media_text(preprocessor):
     # Excessive repeated characters
     text = "Soooooo happy!!!"
     assert preprocessor.normalize_social_media_text(text) == "So happy!"
+

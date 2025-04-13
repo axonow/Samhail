@@ -9,6 +9,16 @@ from psycopg2.extras import execute_values
 import logging
 import sys
 
+# Import the TextPreprocessor class
+try:
+    from data_preprocessing.text_preprocessor import TextPreprocessor
+    TEXT_PREPROCESSOR_AVAILABLE = True
+    logger.info("TextPreprocessor successfully imported")
+except ImportError as e:
+    TEXT_PREPROCESSOR_AVAILABLE = False
+    print(f"Import error: {e}")  # Print directly to see the exact import error
+    # The path might be incorrect or the module not installed
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +61,15 @@ class MarkovChain:
         self.using_db = False
         self.conn_pool = None
         self.environment = environment
+
+        # Initialize text preprocessor if available
+        self.preprocessor = None
+        if TEXT_PREPROCESSOR_AVAILABLE:
+            try:
+                self.preprocessor = TextPreprocessor()
+                logger.info("TextPreprocessor initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize TextPreprocessor: {e}")
         
         # Load database configuration if not provided
         if db_config is None:
@@ -195,17 +214,23 @@ class MarkovChain:
             logger.error(f"Error setting up database: {e}")
             raise
 
-    def train(self, text, clear_previous=True):
+    def train(self, text, clear_previous=True, preprocess=True):
         """
         Trains the Markov Chain on a given text by learning word transitions.
         
         Args:
             text (str): The input text used to train the Markov Chain.
             clear_previous (bool): Whether to clear previous training data
+            preprocess (bool): Whether to preprocess the text before training
         """
+        # Apply preprocessing if requested
+        if preprocess:
+            text = self._preprocess_text(text)
+            
         words = text.split()
         if len(words) < self.n_gram + 1:
             # If there aren't enough words, no transitions can be learned
+            logger.warning("Text too short for training with current n-gram setting")
             return
 
         # Estimate the potential size of the model
@@ -334,24 +359,76 @@ class MarkovChain:
                 DO UPDATE SET count = {table_prefix}_transitions.count + EXCLUDED.count
             """, batch)
 
-    def predict(self, current_state):
+    def _preprocess_text(self, text):
+        """
+        Perform comprehensive text normalization using TextPreprocessor.
+        
+        This method applies a sequence of normalization steps to improve text quality
+        for both training and generation:
+        
+        1. Converts to lowercase
+        2. Expands contractions
+        3. Normalizes for accents/special characters
+        4. Normalizes social media text (hashtags, mentions)
+        5. Handles emojis
+        6. Removes URLs 
+        7. Removes HTML tags
+        8. Handles whitespace
+        
+        Args:
+            text (str): Raw input text
+            
+        Returns:
+            str: Normalized text ready for processing
+        """
+        if self.preprocessor is None:
+            logger.warning("TextPreprocessor not available, skipping normalization")
+            return text
+        try:
+            preprocessor = TextPreprocessor()
+            
+            # Apply comprehensive normalization pipeline
+            text = preprocessor.to_lowercase(text)
+            text = preprocessor.handle_contractions(text)
+            text = preprocessor.normalize(text)
+            text = preprocessor.normalize_social_media_text(text)
+            text = preprocessor.handle_emojis(text)
+            text = preprocessor.handle_urls(text)
+            text = preprocessor.remove_html_tags(text)
+            text = preprocessor.handle_whitespace(text)
+            
+            logger.info("Text normalization completed")
+            return text
+
+        except Exception as e:
+            logger.error(f"Error during text normalization: {e}")
+            return text
+
+
+    def predict(self, current_state, preprocess=True):
         """
         Predicts the next word based on the current state using learned probabilities.
         
         Args:
             current_state: The current state (word or tuple of words) for prediction.
+            preprocess (bool): Whether to preprocess the input state
         
         Returns:
             str or None: The predicted next word, or None if the current state is not in the model.
         """
-        # Handle string input for n-gram models
-        if isinstance(current_state, str) and self.n_gram > 1:
-            words = current_state.split()
-            if len(words) >= self.n_gram:
-                current_state = tuple(words[:self.n_gram])
-            else:
-                return None
+        # Handle string input with preprocessing if requested
+        if isinstance(current_state, str):
+            if preprocess:
+                current_state = self._preprocess_text(current_state)
                 
+            # Handle n-gram conversion for string input
+            if self.n_gram > 1:
+                words = current_state.split()
+                if len(words) >= self.n_gram:
+                    current_state = tuple(words[:self.n_gram])
+                else:
+                    return None
+        
         # Choose the appropriate prediction method based on storage
         if self.using_db:
             return self._predict_from_db(current_state)
@@ -425,13 +502,14 @@ class MarkovChain:
         finally:
             self._return_connection(conn)
 
-    def generate_text(self, start=None, max_length=100):
+    def generate_text(self, start=None, max_length=100, preprocess=True):
         """
         Generates text starting from a given state.
         
         Args:
             start: Starting state (word or tuple). If None, a random state is chosen.
             max_length (int): Maximum number of words to generate.
+            preprocess (bool): Whether to preprocess the starting state
         
         Returns:
             str: Generated text.
@@ -445,6 +523,10 @@ class MarkovChain:
         if not has_transitions:
             return "Model not trained"
 
+        # Preprocess the starting state if needed
+        if preprocess and start and isinstance(start, str):
+            start = self._preprocess_text(start)
+            
         # Get a valid starting state
         current_state = self._get_valid_start_state(start)
         if current_state is None:
@@ -464,7 +546,7 @@ class MarkovChain:
         
         # Generate remaining words
         for _ in range(remaining):
-            next_word = self.predict(current_state)
+            next_word = self.predict(current_state, preprocess=False)  # Already preprocessed
             if next_word is None:
                 break
             
@@ -645,6 +727,35 @@ text = "It was a bright cold day in April, and the clocks were striking thirteen
 markov_chain_test.train(text)
 predicted_word_test = markov_chain_test.predict("It was")
 print(predicted_word_test)
+print("\n")
+
+# Example usage with preprocessing
+markov_chain = MarkovChain(n_gram=2, memory_threshold=10000, environment="test")
+
+# Raw text with various issues that preprocessing will handle
+raw_text = """It was a bright cold day in April, and the clocks were striking thirteen. 
+Winston Smith, his chin nuzzled into his breast in an effort to escape the vile wind, 
+slipped quickly through the glass doors of Victory Mansions, though not quickly 
+enough to prevent a swirl of gritty dust from entering along with him.
+http://example.com/test?page=1 
+<b>HTML tags</b> should be removed!
+Don't forget about contractions :) 😊"""
+
+# Train with preprocessing
+markov_chain.train(raw_text, preprocess=True)
+
+# Generate text
+generated_text = markov_chain.generate_text(start="It was", max_length=50)
+print("Generated text with preprocessed training:")
+print(generated_text)
+print("\n")
+
+# Compare with specific normalization
+normalized_start = markov_chain._preprocess_text("It's cold in April, don't you think? 🥶")
+print("Normalized input:", normalized_start)
+generated_normalized = markov_chain.generate_text(start=normalized_start, max_length=30)
+print("Generated from normalized input:")
+print(generated_normalized)
 
 
 
