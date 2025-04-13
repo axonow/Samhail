@@ -1,20 +1,33 @@
 # Example usage for text generation
 import os
+import sys
 import json
 import datetime
-from analytics import MarkovChainAnalytics
-from markov_chain import MarkovChain
+
+# Ensure the current directory is in the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+# Import the MarkovChain and analytics modules with robust error handling
+try:
+    from markov_chain import MarkovChain
+    from analytics import MarkovChainAnalytics
+except ImportError:
+    # If direct import fails, try the absolute import path
+    try:
+        from models.production_models.markov_chain.markov_chain import MarkovChain
+        from models.production_models.markov_chain.analytics import MarkovChainAnalytics
+    except ImportError:
+        print("\033[1mError: Could not import MarkovChain or MarkovChainAnalytics\033[0m")
+        sys.exit(1)
 
 # Import JSON logger for consistent logging
 try:
     from json_logger import get_logger, log_json, setup_log_file
 except ImportError:
     # Fallback if json_logger is not found (for direct imports from other directories)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    import sys
-    sys.path.append(current_dir)
     try:
-        from json_logger import get_logger, log_json, setup_log_file
+        from models.production_models.markov_chain.json_logger import get_logger, log_json, setup_log_file
     except ImportError:
         print("\033[1mWarning: json_logger module not found, using basic logging\033[0m")
         get_logger = None

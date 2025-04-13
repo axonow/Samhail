@@ -7,6 +7,11 @@ This guide provides detailed steps to set up and run the project suc
 1. Download the project into your local machine using SSH/HTTPS
 2. Navigate to project root directory from terminal
 
+```bash
+git clone git@github.com:axonow/Samhail.git
+cd Samhail
+```
+
 ## 1. **Prepare Dependent Library Installation via Homebrew**
 
 ```bash
@@ -119,7 +124,7 @@ Install the following extensions in Visual Studio Code:
 
 1.  Navigate to the project root directory
     
-2.  Run the tests using pytest: ` python -m pytest --cov=models/nlps --cov-report=html -v`
+2.  Run the tests using pytest: ` python -m pytest --cov=models/ --cov-report=html -v`
     
 3.  Example
 ```python 
