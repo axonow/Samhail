@@ -1,5 +1,7 @@
 # Import necessary libraries
-from transformers import BertTokenizer, BertForMaskedLM  # For loading the BERT model and tokenizer
+# For loading the BERT model and tokenizer
+import torch
+from transformers import BertTokenizer, BertForMaskedLM
 import torch  # For tensor operations and model inference
 import logging  # For suppressing warnings
 
@@ -32,69 +34,69 @@ model.eval()  # Set the model to evaluation mode (disables dropout, etc.)
 # Prediction Function
 # -------------------------------
 
-def predict_next_word_bert(text, top_k=5):
+
+def predict_next_word_bert(input_text, top_k=5):
     """
-    Predicts the next word(s) for a given input text using the BERT model.
+    Predict the next word(s) using a BERT model.
 
     Args:
-        text (str): The input text for which the next word(s) are predicted.
-        top_k (int): The number of top probable next words to return (default is 5).
+        input_text (str): The input text containing a [MASK] token.
+        top_k (int): The number of top predictions to return.
 
     Returns:
-        list of str: A list of the top `top_k` predicted next words.
+        list: A list of the top-k predicted words.
 
-    Steps:
-    1. Append a [MASK] token to the input text to indicate the missing word.
-    2. Tokenize the input text using the BERT tokenizer.
-    3. Pass the tokenized input to the BERT model to get the logits (raw predictions).
-    4. Extract the logits for the [MASK] token.
-    5. Apply the softmax function to convert logits into probabilities.
-    6. Use `torch.topk` to get the top `top_k` tokens with the highest probabilities.
-    7. Decode the token IDs back into words using the tokenizer.
-
-    Example:
-        Input: "The cat sat on the"
-        Output: ["mat", "floor", "sofa", "chair", "bed"]
+    Raises:
+        ValueError: If the input text is empty, does not contain a [MASK] token,
+                    or if `top_k` is not a positive integer.
     """
-    if not text.strip():
+    if not input_text:
         raise ValueError("Input text cannot be empty")
+    if "[MASK]" not in input_text:
+        raise ValueError("No [MASK] token found in the input")
     if not isinstance(top_k, int) or top_k <= 0:
-        raise ValueError("top_k must be a positive integer") # Ensure top_k is a positive integer
+        raise ValueError("top_k must be a positive integer")
 
-    # Append the [MASK] token to the input text
-    masked_text = text + " [MASK]"
+    # Tokenize the input text
+    inputs = tokenizer(input_text, return_tensors="pt")
+    mask_token_index = (inputs["input_ids"] == tokenizer.mask_token_id).nonzero(
+        as_tuple=True
+    )[1]
 
-    # Tokenize the input text and convert it into tensors
-    inputs = tokenizer(masked_text, return_tensors="pt")
+    # Ensure the [MASK] token exists in the input
+    if mask_token_index.numel() == 0:
+        raise ValueError("No [MASK] token found in the input")
 
-    # Get the position of the [MASK] token
-    mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1]
+    # Get model predictions
+    outputs = model(**inputs)
+    logits = outputs.logits
 
-    # Perform inference with the BERT model (no gradient computation needed)
-    with torch.no_grad():
-        outputs = model(**inputs)
+    # Extract logits for the [MASK] token
+    mask_token_logits = logits[0, mask_token_index, :].squeeze(0)
 
-    # Extract the logits for the [MASK] token
-    logits = outputs.logits[0, mask_token_index, :]
+    # Limit top_k to the number of available logits
+    top_k = min(top_k, mask_token_logits.size(0))
 
-    # Apply softmax to convert logits into probabilities
-    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+    # Get the top-k predictions
+    top_k_indices = torch.topk(mask_token_logits, top_k).indices.tolist()
 
-    # Get the top `top_k` tokens with the highest probabilities
-    top_k_tokens = torch.topk(probabilities, top_k, dim=-1)
+    # Decode the predicted token IDs to words
+    predicted_words = [tokenizer.decode([idx]).strip() for idx in top_k_indices]
 
-    # Decode the token IDs back into words
-    next_words = [tokenizer.decode([token]) for token in top_k_tokens.indices[0]]
+    return predicted_words
 
-    return next_words
 
 # -------------------------------
 # Example Predictions
 # -------------------------------
 
+
 if __name__ == "__main__":
     # Predict the next word(s) for various input texts
     # The predictions are based on the context provided in the input text.
-    print(predict_next_word_bert("The cat sat on the"))  # Example output: ["mat", "floor", "sofa", "chair", "bed"]
-    print(predict_next_word_bert("Deep learning is"))  # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
-    print(predict_next_word_bert("Transformers are revolutionizing"))  # Example output: ["AI", "technology", "NLP", "research", "science"]
+    # Example output: ["mat", "floor", "sofa", "chair", "bed"]
+    print(predict_next_word_bert("The cat sat on the"))
+    # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
+    print(predict_next_word_bert("Deep learning is"))
+    # Example output: ["AI", "technology", "NLP", "research", "science"]
+    print(predict_next_word_bert("Transformers are revolutionizing"))

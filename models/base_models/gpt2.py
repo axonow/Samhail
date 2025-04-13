@@ -1,5 +1,6 @@
 # Import necessary libraries
-from transformers import GPT2Tokenizer, GPT2LMHeadModel  # For loading the GPT-2 model and tokenizer
+# For loading the GPT-2 model and tokenizer
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
 import torch  # For tensor operations and model inference
 
 # -------------------------------
@@ -18,6 +19,7 @@ model.eval()  # Set the model to evaluation mode (disables dropout, etc.)
 # -------------------------------
 # Prediction Function
 # -------------------------------
+
 
 def predict_next_word(text, top_k=5):
     if not text.strip():
@@ -46,31 +48,36 @@ def predict_next_word(text, top_k=5):
     """
     # Tokenize the input text and convert it into tensors
     inputs = tokenizer(text, return_tensors="pt")
-    
+
     # Perform inference with the GPT-2 model (no gradient computation needed)
     with torch.no_grad():
         outputs = model(**inputs)
-    
+
     # Extract the logits for the last token in the sequence
     logits = outputs.logits[:, -1, :]
-    
+
     # Apply softmax to convert logits into probabilities
     probabilities = torch.nn.functional.softmax(logits, dim=-1)
-    
+
     # Get the top `top_k` tokens with the highest probabilities
     top_k_tokens = torch.topk(probabilities, top_k)
-    
+
     # Decode the token IDs back into words
     next_words = [tokenizer.decode([token]) for token in top_k_tokens.indices[0]]
-    
+
     return next_words
+
 
 # -------------------------------
 # Example Predictions
 # -------------------------------
 
+
 # Predict the next word(s) for various input texts
 # The predictions are based on the context provided in the input text.
-print(predict_next_word("The cat sat on the"))  # Example output: ["mat", "floor", "sofa", "chair", "bed"]
-print(predict_next_word("Deep learning is"))  # Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
-print(predict_next_word("Transformers are revolutionizing"))  # Example output: ["AI", "technology", "NLP", "research", "science"]
+# Example output: ["mat", "floor", "sofa", "chair", "bed"]
+print(predict_next_word("The cat sat on the"))
+# Example output: ["transforming", "revolutionizing", "advancing", "changing", "reshaping"]
+print(predict_next_word("Deep learning is"))
+# Example output: ["AI", "technology", "NLP", "research", "science"]
+print(predict_next_word("Transformers are revolutionizing"))

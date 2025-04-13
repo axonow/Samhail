@@ -1,14 +1,23 @@
 # Import necessary libraries
 import pytest  # For writing and running tests
 import numpy as np  # For array comparison
-from pgmpy.models import DiscreteBayesianNetwork  # For creating the Bayesian Network
-from pgmpy.factors.discrete import TabularCPD  # For defining Conditional Probability Distributions (CPDs)
-from pgmpy.inference import VariableElimination  # For performing inference on the Bayesian Network
-from models.base_models.bayesian_network import model, inference  # Import the model and inference object
+
+# For creating the Bayesian Network
+from pgmpy.models import DiscreteBayesianNetwork
+
+# For defining Conditional Probability Distributions (CPDs)
+from pgmpy.factors.discrete import TabularCPD
+
+# For performing inference on the Bayesian Network
+from pgmpy.inference import VariableElimination
+
+# Import the model and inference object
+from models.base_models.bayesian_network import model, inference
 
 # -------------------------------
 # Test Suite for Bayesian Network
 # -------------------------------
+
 
 def test_bayesian_network_structure():
     """
@@ -17,8 +26,9 @@ def test_bayesian_network_structure():
     Asserts:
         - The edges in the network match the expected structure.
     """
-    expected_edges = [('Subject', 'Action'), ('Action', 'Location')]
+    expected_edges = [("Subject", "Action"), ("Action", "Location")]
     assert set(model.edges()) == set(expected_edges)
+
 
 def test_bayesian_network_cpds():
     """
@@ -31,16 +41,17 @@ def test_bayesian_network_cpds():
     cpds = {cpd.variable: cpd for cpd in model.get_cpds()}
 
     # Test the 'Subject' CPD
-    assert cpds['Subject'].variable_card == 2
-    assert np.array_equal(cpds['Subject'].values, [0.5, 0.5])  # Compare to a 1D array
+    assert cpds["Subject"].variable_card == 2
+    assert np.array_equal(cpds["Subject"].values, [0.5, 0.5])  # Compare to a 1D array
 
     # Test the 'Action' CPD
-    assert cpds['Action'].variable_card == 2
-    assert np.array_equal(cpds['Action'].values, [[0.8, 0.3], [0.2, 0.7]])
+    assert cpds["Action"].variable_card == 2
+    assert np.array_equal(cpds["Action"].values, [[0.8, 0.3], [0.2, 0.7]])
 
     # Test the 'Location' CPD
-    assert cpds['Location'].variable_card == 2
-    assert np.array_equal(cpds['Location'].values, [[0.9, 0.1], [0.1, 0.9]])
+    assert cpds["Location"].variable_card == 2
+    assert np.array_equal(cpds["Location"].values, [[0.9, 0.1], [0.1, 0.9]])
+
 
 def test_bayesian_network_inference():
     """
@@ -50,12 +61,13 @@ def test_bayesian_network_inference():
         - The most probable 'Location' is correctly inferred given evidence for 'Subject'.
     """
     # Test inference for 'Subject' = 'Cat'
-    result = inference.map_query(variables=['Location'], evidence={'Subject': 'Cat'})
-    assert result['Location'] == 'On the Mat'
+    result = inference.map_query(variables=["Location"], evidence={"Subject": "Cat"})
+    assert result["Location"] == "On the Mat"
 
     # Test inference for 'Subject' = 'Dog'
-    result = inference.map_query(variables=['Location'], evidence={'Subject': 'Dog'})
-    assert result['Location'] == 'In the Park'
+    result = inference.map_query(variables=["Location"], evidence={"Subject": "Dog"})
+    assert result["Location"] == "In the Park"
+
 
 def test_bayesian_network_invalid_model():
     """
@@ -65,7 +77,7 @@ def test_bayesian_network_invalid_model():
         - An exception is raised when the model is invalid.
     """
     # Create an invalid Bayesian Network (missing CPDs)
-    invalid_model = DiscreteBayesianNetwork([('A', 'B')])
+    invalid_model = DiscreteBayesianNetwork([("A", "B")])
 
     with pytest.raises(ValueError, match="CPD associated with"):
         invalid_model.check_model()
