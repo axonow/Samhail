@@ -100,7 +100,8 @@ inference = VariableElimination(model)
 
 # Predict the 'Location' given that the 'Subject' is 'Cat'
 # The query specifies the evidence ('Subject' = 'Cat') and asks for the most probable 'Location'.
-result = inference.map_query(variables=["Location"], evidence={"Subject": "Cat"})
+result = inference.map_query(
+    variables=["Location"], evidence={"Subject": "Cat"})
 
 # Print the predicted location
 print(f"Predicted Location: {result['Location']}")

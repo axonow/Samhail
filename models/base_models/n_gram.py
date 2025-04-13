@@ -56,7 +56,7 @@ class NGramModel:
         words = text.split()  # Split the text into words
         for i in range(len(words) - self.n + 1):  # Iterate through consecutive N-grams
             # Take the last (n-1) words as the N-gram
-            ngram = tuple(words[i : i + self.n - 1])
+            ngram = tuple(words[i: i + self.n - 1])
             next_word = words[i + self.n - 1]  # The next word to predict
             # Increment transition count
             self.ngram_counts[ngram][next_word] += 1
@@ -85,7 +85,7 @@ class NGramModel:
                 - Probabilities: {"sat": 2/3, "jumped": 1/3}
                 - Randomly selects "sat" or "jumped" based on these probabilities.
         """
-        words = tuple(words[-(self.n - 1) :])  # Take the last (n-1) words
+        words = tuple(words[-(self.n - 1):])  # Take the last (n-1) words
         if words not in self.ngram_counts:
             # No prediction available if the (n-1) words are not in the model
             return None
