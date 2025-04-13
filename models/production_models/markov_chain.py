@@ -9,16 +9,6 @@ from psycopg2.extras import execute_values
 import logging
 import sys
 
-# Import the TextPreprocessor class
-try:
-    from data_preprocessing.text_preprocessor import TextPreprocessor
-    TEXT_PREPROCESSOR_AVAILABLE = True
-    logger.info("TextPreprocessor successfully imported")
-except ImportError as e:
-    TEXT_PREPROCESSOR_AVAILABLE = False
-    print(f"Import error: {e}")  # Print directly to see the exact import error
-    # The path might be incorrect or the module not installed
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +17,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import the TextPreprocessor class
+try:
+    # Add project root to Python path
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    sys.path.insert(0, project_root)
+
+    from data_preprocessing.text_preprocessor import TextPreprocessor
+    TEXT_PREPROCESSOR_AVAILABLE = True
+    logger.info("TextPreprocessor successfully imported")
+except ImportError as e:
+    TEXT_PREPROCESSOR_AVAILABLE = False
+    print(f"Import error: {e}")  # Print directly to see the exact import error
+    # The path might be incorrect or the module not installed
 
 class MarkovChain:
     """
