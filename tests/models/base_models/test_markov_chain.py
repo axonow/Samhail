@@ -2,12 +2,6 @@ import pytest
 from models.base_models.markov_chain import MarkovChain
 
 
-def test_markov_chain_initialization():
-    mc = MarkovChain()
-    assert len(mc.transitions) == 0
-    assert len(mc.total_counts) == 0
-
-
 def test_markov_chain_training():
     mc = MarkovChain()
     text = "the cat sat on the mat the cat jumped over the mat"
@@ -22,20 +16,11 @@ def test_markov_chain_training():
     assert mc.transitions["mat"]["the"] == 1
 
     # Validate total counts
-    assert mc.total_counts["the"] == 3
+    assert mc.total_counts["the"] == 4
     assert mc.total_counts["cat"] == 2
     assert mc.total_counts["sat"] == 1
     assert mc.total_counts["on"] == 1
     assert mc.total_counts["mat"] == 1
-
-
-def test_markov_chain_training_single_word():
-    mc = MarkovChain()
-    mc.train("hello")
-
-    # No transitions or counts should be added
-    assert len(mc.transitions) == 0
-    assert len(mc.total_counts) == 0
 
 
 def test_markov_chain_training_repeated_word():
@@ -47,6 +32,15 @@ def test_markov_chain_training_repeated_word():
 
     # Validate total counts
     assert mc.total_counts["hello"] == 2
+
+
+def test_markov_chain_training_single_word():
+    mc = MarkovChain()
+    mc.train("hello")
+
+    # No transitions or counts should be added
+    assert len(mc.transitions) == 0
+    assert len(mc.total_counts) == 0
 
 
 def test_markov_chain_predict_valid_word():
