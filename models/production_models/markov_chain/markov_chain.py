@@ -10,6 +10,10 @@ import logging
 import sys
 import pickle
 import datetime
+import numpy as np
+import onnx
+from onnx import helper, TensorProto
+import onnxruntime as ort
 
 # Import the enhanced JSON logger
 try:
@@ -158,7 +162,6 @@ class MarkovChain:
             except Exception as e:
                 logger.warning(f"Failed to connect to database: {e}")
                 logger.warning("Falling back to in-memory storage only")
-                self.conn_pool = None
 
                 # Log database connection failure
                 if log_json:
@@ -1257,3 +1260,549 @@ class MarkovChain:
 
         logger.info(f"Model loaded from {filepath}")
         return model
+
+    def export_to_onnx(self, filepath):
+        """
+        Export the Markov Chain model to ONNX format.
+
+        This method transforms the Markov Chain transition matrix into an ONNX model
+        where transition probabilities are represented as weights in a neural network structure.
+
+        Args:
+            filepath (str): Path where the ONNX model will be saved
+
+        Returns:
+            bool: True if export was successful, False otherwise
+        """
+        try:
+            # Log start of export process
+            logger.info(f"Starting ONNX export to {filepath}")
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX export started",
+                    {
+                        "filepath": filepath,
+                        "storage": "database" if self.using_db else "memory",
+                        "n_gram": self.n_gram,
+                    },
+                )
+
+            # Create vocabulary and index mapping
+            vocab = set()
+            transition_matrix = {}
+
+            # Extract vocabulary and transitions based on storage type
+            if self.using_db:
+                vocab, transition_matrix = self._extract_db_vocabulary_and_transitions()
+            else:
+                # Extract from memory
+                for state in self.transitions:
+                    if isinstance(state, tuple):
+                        for word in state:
+                            vocab.add(word)
+                    else:
+                        vocab.add(state)
+
+                    for next_word in self.transitions[state]:
+                        vocab.add(next_word)
+
+                transition_matrix = self.transitions
+
+            # Create word to index mapping
+            word_to_idx = {word: i for i, word in enumerate(sorted(vocab))}
+            idx_to_word = {i: word for word, i in word_to_idx.items()}
+            vocab_size = len(vocab)
+
+            # Create transition probability matrix as numpy array
+            matrix = np.zeros((vocab_size, vocab_size), dtype=np.float32)
+
+            # Fill the transition matrix
+            if self.using_db:
+                # For database-backed model
+                for (state, next_word), count in transition_matrix.items():
+                    if self.n_gram == 1:
+                        # Single word state
+                        state_idx = word_to_idx[state]
+                    else:
+                        # Multi-word state, use last word as state (simplification)
+                        state_parts = state.split()
+                        state_idx = word_to_idx[state_parts[-1]]
+
+                    next_idx = word_to_idx[next_word]
+                    total = self._get_db_total_for_state(state)
+                    if total:
+                        matrix[state_idx, next_idx] = count / total
+            else:
+                # For in-memory model
+                for state, next_words in transition_matrix.items():
+                    if isinstance(state, tuple):
+                        # Multi-word state, use last word as state (simplification)
+                        state_idx = word_to_idx[state[-1]]
+                    else:
+                        state_idx = word_to_idx[state]
+
+                    total = self.total_counts[state]
+                    for next_word, count in next_words.items():
+                        next_idx = word_to_idx[next_word]
+                        matrix[state_idx, next_idx] = count / total
+
+            # Create ONNX model components
+            input_name = 'state_idx'
+            output_name = 'next_word_probabilities'
+
+            # Define the ONNX graph
+            # Input: state index
+            input_tensor = helper.make_tensor_value_info(
+                input_name, TensorProto.INT64, [None, 1]  # Batch dimension
+            )
+
+            # Output: probability distribution over next words
+            output_tensor = helper.make_tensor_value_info(
+                output_name, TensorProto.FLOAT, [
+                    None, vocab_size]  # Batch dimension, vocab size
+            )
+
+            # Matrix weights
+            weights = helper.make_tensor(
+                'transition_matrix', TensorProto.FLOAT, matrix.shape, matrix.flatten().tolist()
+            )
+
+            # Create weight node (convert to constant)
+            weights_node = helper.make_node(
+                'Constant', [], ['matrix'], value=weights
+            )
+
+            # Create gather node to look up the right row of the transition matrix
+            gather_node = helper.make_node(
+                'Gather', ['matrix', input_name], ['gathered'], axis=0
+            )
+
+            # Create identity node for output
+            identity_node = helper.make_node(
+                'Identity', ['gathered'], [output_name]
+            )
+
+            # Define the graph
+            graph = helper.make_graph(
+                [weights_node, gather_node, identity_node],
+                'markov_chain_model',
+                [input_tensor],
+                [output_tensor],
+            )
+
+            # Add vocabulary mapping as model metadata
+            model_metadata = {
+                'n_gram': str(self.n_gram),
+                'vocab_size': str(vocab_size),
+                'vocab_mapping': json.dumps(word_to_idx),
+                'export_date': datetime.datetime.now().isoformat(),
+                'model_type': 'markov_chain'
+            }
+
+            # Create the model
+            model = helper.make_model(
+                graph,
+                producer_name='Samhail',
+                doc_string='Markov Chain model converted to ONNX format'
+            )
+
+            # Add metadata
+            for key, value in model_metadata.items():
+                meta = model.metadata_props.add()
+                meta.key = key
+                meta.value = value
+
+            # Set opset version
+            opset = model.opset_import.add()
+            opset.version = 14
+
+            # Check model validity
+            onnx.checker.check_model(model)
+
+            # Save the model
+            onnx.save(model, filepath)
+
+            logger.info(f"Successfully exported model to {filepath}")
+
+            # Log successful export
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX export completed",
+                    {
+                        "filepath": filepath,
+                        "vocab_size": vocab_size,
+                        "n_gram": self.n_gram,
+                    },
+                )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error exporting to ONNX: {e}")
+
+            # Log export error
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX export failed",
+                    {
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "filepath": filepath,
+                    },
+                )
+
+            return False
+
+    def _extract_db_vocabulary_and_transitions(self):
+        """Extract vocabulary and transitions from database"""
+        conn = self._get_connection()
+        if not conn:
+            logger.error("Failed to get database connection for ONNX export")
+            return set(), {}
+
+        # Add environment suffix to table names
+        table_prefix = f"markov_{self.environment}"
+
+        try:
+            vocab = set()
+            transitions = {}
+
+            with conn.cursor() as cur:
+                # Get all transitions
+                cur.execute(
+                    f"""
+                    SELECT state, next_word, count 
+                    FROM {table_prefix}_transitions
+                    WHERE n_gram = %s
+                """,
+                    (self.n_gram,),
+                )
+
+                for state, next_word, count in cur.fetchall():
+                    # Add words to vocabulary
+                    if self.n_gram == 1:
+                        vocab.add(state)
+                    else:
+                        for word in state.split():
+                            vocab.add(word)
+
+                    vocab.add(next_word)
+
+                    # Store transition probability
+                    transitions[(state, next_word)] = count
+
+            return vocab, transitions
+
+        except Exception as e:
+            logger.error(f"Database error during vocabulary extraction: {e}")
+            return set(), {}
+        finally:
+            self._return_connection(conn)
+
+    def _get_db_total_for_state(self, state):
+        """Get total count for a state from database"""
+        conn = self._get_connection()
+        if not conn:
+            return 0
+
+        # Add environment suffix to table names
+        table_prefix = f"markov_{self.environment}"
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT count FROM {table_prefix}_total_counts
+                    WHERE state = %s AND n_gram = %s
+                """,
+                    (state, self.n_gram),
+                )
+
+                result = cur.fetchone()
+                return result[0] if result else 0
+
+        except Exception as e:
+            logger.error(f"Database error getting total count: {e}")
+            return 0
+        finally:
+            self._return_connection(conn)
+
+    @classmethod
+    def load_from_onnx(cls, filepath, db_config=None, environment="development", memory_threshold=10000):
+        """
+        Load a Markov Chain model from an ONNX file.
+
+        This method loads an ONNX model previously exported with export_to_onnx() and
+        converts it back to a MarkovChain instance.
+
+        Args:
+            filepath (str): Path to the ONNX model file
+            db_config (dict, optional): PostgreSQL configuration if using database storage
+            environment (str): Which environment to use ('development' or 'test')
+            memory_threshold (int): Threshold for in-memory vs DB storage
+
+        Returns:
+            MarkovChain: A new MarkovChain instance with the loaded model data
+        """
+        try:
+            # Log start of loading process
+            logger.info(
+                f"Loading Markov Chain model from ONNX file: {filepath}")
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX model loading started",
+                    {"filepath": filepath, "environment": environment},
+                )
+
+            # Load the ONNX model
+            onnx_model = onnx.load(filepath)
+
+            # Extract metadata
+            metadata = {
+                prop.key: prop.value for prop in onnx_model.metadata_props}
+
+            # Get n-gram value from metadata
+            n_gram = int(metadata.get('n_gram', '1'))
+
+            # Get vocabulary mapping
+            vocab_mapping = json.loads(metadata.get('vocab_mapping', '{}'))
+            idx_to_word = {int(idx): word for idx,
+                           word in vocab_mapping.items()}
+
+            # Create a new model instance
+            model = cls(
+                n_gram=n_gram,
+                memory_threshold=memory_threshold,
+                db_config=db_config,
+                environment=environment
+            )
+
+            # Create an ONNX Runtime session to access the model
+            session_options = ort.SessionOptions()
+            session = ort.InferenceSession(
+                filepath, sess_options=session_options)
+
+            # Get the transition matrix
+            # Extract model inputs and outputs
+            input_name = session.get_inputs()[0].name
+            output_name = session.get_outputs()[0].name
+
+            # Get model weights (transition matrix) - depends on ONNX model structure
+            # This assumes the exported model has weights stored in a node named 'transition_matrix'
+            for node in onnx_model.graph.node:
+                if node.op_type == 'Constant' and len(node.output) > 0 and node.output[0] == 'matrix':
+                    # Extract the weights tensor
+                    weights_tensor = None
+                    for attr in node.attribute:
+                        if attr.name == 'value':
+                            weights_tensor = onnx.numpy_helper.to_array(attr.t)
+                            break
+
+                    if weights_tensor is not None:
+                        # Convert matrix to dictionary format
+                        transitions = defaultdict(lambda: defaultdict(int))
+                        total_counts = defaultdict(int)
+
+                        # Get vocabulary size
+                        vocab_size = weights_tensor.shape[0]
+
+                        # Populate transitions and total_counts
+                        for i in range(vocab_size):
+                            if i not in idx_to_word:
+                                continue
+
+                            state = idx_to_word[i]
+                            state_vector = weights_tensor[i]
+
+                            # Count total transitions for this state
+                            non_zero_transitions = np.where(
+                                state_vector > 0)[0]
+                            if len(non_zero_transitions) == 0:
+                                continue
+
+                            # Calculate total based on probabilities
+                            # For simplicity, we'll normalize probabilities to counts
+                            # by using a base count of 100 for the most likely transition
+                            max_prob = np.max(state_vector)
+                            scaling_factor = 100 / max_prob if max_prob > 0 else 0
+
+                            for j in non_zero_transitions:
+                                if j not in idx_to_word:
+                                    continue
+
+                                next_word = idx_to_word[j]
+                                probability = state_vector[j]
+
+                                # Convert probability to count
+                                count = int(probability * scaling_factor)
+                                if count > 0:
+                                    transitions[state][next_word] = count
+                                    total_counts[state] += count
+
+                        # Update model with the extracted transitions
+                        model.transitions = transitions
+                        model.total_counts = total_counts
+                        model.using_db = False
+
+                        logger.info(
+                            f"Successfully loaded ONNX model with {len(transitions)} states")
+
+                        # Log successful loading
+                        if log_json:
+                            log_json(
+                                logger,
+                                "ONNX model loaded successfully",
+                                {
+                                    "filepath": filepath,
+                                    "states_count": len(transitions),
+                                    "n_gram": n_gram,
+                                    "environment": environment,
+                                }
+                            )
+
+                        # Option to store in database if needed
+                        if db_config and len(transitions) > model.memory_threshold:
+                            logger.info(
+                                "Converting loaded model to database storage")
+                            model._store_model_in_db(transitions, total_counts)
+
+                        return model
+
+            # If we get here, we couldn't extract the transition matrix
+            logger.error("Failed to extract transition matrix from ONNX model")
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX model loading failed",
+                    {
+                        "filepath": filepath,
+                        "error": "Failed to extract transition matrix",
+                    }
+                )
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error loading ONNX model: {e}")
+            if log_json:
+                log_json(
+                    logger,
+                    "ONNX model loading failed",
+                    {
+                        "filepath": filepath,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                )
+            return None
+
+    def _store_model_in_db(self, transitions, total_counts):
+        """
+        Store the loaded model in database storage
+
+        Args:
+            transitions: Dictionary of transitions to store
+            total_counts: Dictionary of total counts to store
+        """
+        if not self.conn_pool:
+            logger.warning(
+                "No database connection available, keeping model in memory")
+            return False
+
+        conn = self._get_connection()
+        if not conn:
+            logger.warning(
+                "Failed to get database connection, keeping model in memory")
+            return False
+
+        # Add environment suffix to table names
+        table_prefix = f"markov_{self.environment}"
+
+        try:
+            # First clear existing data for this n-gram
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    DELETE FROM {table_prefix}_transitions WHERE n_gram = %s
+                """,
+                    (self.n_gram,),
+                )
+                cur.execute(
+                    f"""
+                    DELETE FROM {table_prefix}_total_counts WHERE n_gram = %s
+                """,
+                    (self.n_gram,),
+                )
+
+            # Prepare data for batch insertion
+            transitions_data = []
+            total_counts_data = []
+
+            # Process transitions
+            for state, next_words in transitions.items():
+                # Handle tuple states for n-gram > 1
+                if isinstance(state, tuple):
+                    db_state = " ".join(state)
+                else:
+                    db_state = str(state)
+
+                # Add total count
+                total_counts_data.append(
+                    (db_state, total_counts[state], self.n_gram))
+
+                # Add transitions
+                for next_word, count in next_words.items():
+                    transitions_data.append(
+                        (db_state, next_word, count, self.n_gram))
+
+            # Insert transitions in batches
+            batch_size = 1000
+            for i in range(0, len(transitions_data), batch_size):
+                batch = transitions_data[i:i+batch_size]
+
+                with conn.cursor() as cur:
+                    execute_values(
+                        cur,
+                        f"""
+                        INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram)
+                        VALUES %s
+                    """,
+                        batch
+                    )
+
+            # Insert total counts in batches
+            for i in range(0, len(total_counts_data), batch_size):
+                batch = total_counts_data[i:i+batch_size]
+
+                with conn.cursor() as cur:
+                    execute_values(
+                        cur,
+                        f"""
+                        INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
+                        VALUES %s
+                    """,
+                        batch
+                    )
+
+            conn.commit()
+
+            # Update model state
+            self.using_db = True
+            self.transitions.clear()
+            self.total_counts.clear()
+
+            logger.info(
+                f"Successfully stored model in {self.environment} database")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error storing model in database: {e}")
+            conn.rollback()
+            return False
+
+        finally:
+            self._return_connection(conn)
