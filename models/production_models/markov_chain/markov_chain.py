@@ -1,3 +1,4 @@
+from utils.loggers.json_logger import get_logger
 from collections import defaultdict
 import random
 import os
@@ -8,59 +9,29 @@ from psycopg2 import pool
 from psycopg2.extras import execute_values
 import logging
 import sys
-import pickle
 import datetime
 import numpy as np
 import onnx
 from onnx import helper, TensorProto
 import onnxruntime as ort
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
+import time
+import psutil
+from math import ceil
+import concurrent.futures
 
-# Import the enhanced JSON logger
-try:
-    from json_logger import get_logger, log_json
-except ImportError:
-    # Fallback if json_logger is not found (for direct imports from other directories)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(current_dir)
-    try:
-        from json_logger import get_logger, log_json
-    except ImportError:
-        print(
-            "\033[1mWarning: json_logger module not found, using basic logging\033[0m"
-        )
-        get_logger = None
-        log_json = None
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", ".."))
+sys.path.insert(0, project_root)
 
-# Setup default logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,
-)
-
-# Set up the JSON logger
-# Define the log file path for consistent logging across modules
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-log_file_path = os.path.join(log_dir, "test_run.log")
-
-# Configure the JSON logger if available
-if get_logger:
-    logger = get_logger("markov_chain", log_file=log_file_path)
-else:
-    logger = logging.getLogger("markov_chain")
+# Import the enhanced JSON logger from utils
 
 # Import the TextPreprocessor class
 try:
-    # Add project root to Python path
-    project_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..")
-    )
-    sys.path.insert(0, project_root)
-
     from data_preprocessing.text_preprocessor import TextPreprocessor
-
     TEXT_PREPROCESSOR_AVAILABLE = True
-    logger.info("TextPreprocessor successfully imported")
 except ImportError as e:
     TEXT_PREPROCESSOR_AVAILABLE = False
     print(f"\033[1mImport error: {e}\033[0m")  # Print in bold format
@@ -81,6 +52,7 @@ class MarkovChain:
         memory_threshold=10000,
         db_config=None,
         environment="development",
+        logger=None
     ):
         """
         Initializes the Markov Chain with flexible storage options.
@@ -90,6 +62,7 @@ class MarkovChain:
             memory_threshold (int): Maximum number of states before switching to DB
             db_config (dict, optional): PostgreSQL configuration dictionary
             environment (str): Which environment to use ('development' or 'test')
+            logger (Logger, required): Logger instance for logging model activities
 
         Attributes:
             transitions: Dictionary for in-memory transition storage
@@ -98,6 +71,7 @@ class MarkovChain:
             using_db: Flag indicating if DB storage is active
             conn_pool: Connection pool for PostgreSQL (if used)
             environment: Current environment setting ('development' or 'test')
+            logger: Logger instance for all logging operations
         """
         self.n_gram = n_gram
         self.memory_threshold = memory_threshold
@@ -107,24 +81,30 @@ class MarkovChain:
         self.conn_pool = None
         self.environment = environment
 
+        # Ensure logger is provided
+        if logger is None:
+            raise ValueError("Logger instance must be provided")
+        self.logger = logger
+
         # Initialize text preprocessor if available
         self.preprocessor = None
         if TEXT_PREPROCESSOR_AVAILABLE:
             try:
                 self.preprocessor = TextPreprocessor()
-                logger.info("TextPreprocessor initialized")
+                self.logger.info("TextPreprocessor initialized")
             except Exception as e:
-                logger.error(f"Failed to initialize TextPreprocessor: {e}")
+                self.logger.error(
+                    f"Failed to initialize TextPreprocessor: {e}")
 
         # Log initialization details
-        init_data = {
-            "n_gram": n_gram,
-            "memory_threshold": memory_threshold,
-            "environment": environment,
-            "preprocessor_available": TEXT_PREPROCESSOR_AVAILABLE,
-        }
-        if log_json:
-            log_json(logger, "MarkovChain initialized", init_data)
+        self.logger.info("MarkovChain initialized", extra={
+            "metrics": {
+                "n_gram": n_gram,
+                "memory_threshold": memory_threshold,
+                "environment": environment,
+                "preprocessor_available": TEXT_PREPROCESSOR_AVAILABLE
+            }
+        })
 
         # Load database configuration if not provided
         if db_config is None:
@@ -146,30 +126,23 @@ class MarkovChain:
                 conn = self._get_connection()
                 self._setup_database(conn)
                 self._return_connection(conn)
-                logger.info(
-                    f"Successfully connected to PostgreSQL database for {self.environment} environment"
-                )
 
                 # Log successful database connection
-                if log_json:
-                    db_info = {
+                self.logger.info("Database connection established", extra={
+                    "metrics": {
                         "host": db_config.get("host", "localhost"),
                         "port": db_config.get("port", 5432),
                         "dbname": db_config.get("dbname", "markov_chain"),
                         "environment": self.environment,
                     }
-                    log_json(logger, "Database connection established", db_info)
+                })
             except Exception as e:
-                logger.warning(f"Failed to connect to database: {e}")
-                logger.warning("Falling back to in-memory storage only")
-
-                # Log database connection failure
-                if log_json:
-                    log_json(
-                        logger,
-                        "Database connection failed, using in-memory storage",
-                        {"error": str(e), "environment": self.environment},
-                    )
+                self.logger.warning("Database connection failed", extra={
+                    "metrics": {
+                        "error": str(e),
+                        "fallback": "in-memory storage"
+                    }
+                })
 
     def _load_db_config(self):
         """
@@ -200,22 +173,17 @@ class MarkovChain:
                 try:
                     with open(config_path, "r") as f:
                         config = yaml.safe_load(f)
-                        logger.info(
-                            f"Loaded database config from {config_path}")
 
                         # Log config loading
-                        if log_json:
-                            log_json(
-                                logger,
-                                "Database config loaded",
-                                {
-                                    "config_path": config_path,
-                                    "environment": self.environment,
-                                },
-                            )
+                        self.logger.info("Database config loaded", extra={
+                            "metrics": {
+                                "config_path": config_path,
+                                "environment": self.environment,
+                            }
+                        })
                         return config
                 except Exception as e:
-                    logger.warning(
+                    self.logger.warning(
                         f"Error loading database config from {config_path}: {e}"
                     )
 
@@ -225,34 +193,24 @@ class MarkovChain:
                 try:
                     with open(config_path, "r") as f:
                         config = yaml.safe_load(f)
-                        logger.info(
-                            f"Loaded database config from {config_path}")
 
                         # Log config loading
-                        if log_json:
-                            log_json(
-                                logger,
-                                "Database config loaded (default)",
-                                {
-                                    "config_path": config_path,
-                                    "environment": self.environment,
-                                },
-                            )
+                        self.logger.info("Database config loaded (default)", extra={
+                            "metrics": {
+                                "config_path": config_path,
+                                "environment": self.environment,
+                            }
+                        })
                         return config
                 except Exception as e:
-                    logger.warning(
+                    self.logger.warning(
                         f"Error loading database config from {config_path}: {e}"
                     )
 
-        logger.warning("No database configuration found")
-
         # Log no config found
-        if log_json:
-            log_json(
-                logger,
-                "No database configuration found",
-                {"environment": self.environment},
-            )
+        self.logger.warning("No database configuration found", extra={
+            "metrics": {"environment": self.environment}
+        })
         return None
 
     def _get_connection(self):
@@ -291,11 +249,11 @@ class MarkovChain:
                 table_exists = cur.fetchone()[0]
 
                 if not table_exists:
-                    logger.info(
+                    self.logger.info(
                         f"Creating database schema for {self.environment} environment"
                     )
                 else:
-                    logger.info(
+                    self.logger.info(
                         f"Database schema for {self.environment} environment already exists"
                     )
 
@@ -333,12 +291,12 @@ class MarkovChain:
                 )
 
             conn.commit()
-            logger.info(
+            self.logger.info(
                 f"Database setup complete for {self.environment} environment")
 
         except Exception as e:
             conn.rollback()
-            logger.error(f"Error setting up database: {e}")
+            self.logger.error(f"Error setting up database: {e}")
             raise
 
     def train(self, text, clear_previous=True, preprocess=True):
@@ -357,20 +315,13 @@ class MarkovChain:
         words = text.split()
         if len(words) < self.n_gram + 1:
             # If there aren't enough words, no transitions can be learned
-            logger.warning(
-                "Text too short for training with current n-gram setting")
-
-            # Log the warning
-            if log_json:
-                log_json(
-                    logger,
-                    "Text too short for training",
-                    {
-                        "n_gram": self.n_gram,
-                        "text_length": len(words),
-                        "min_required": self.n_gram + 1,
-                    },
-                )
+            self.logger.warning("Text too short for training", extra={
+                "metrics": {
+                    "n_gram": self.n_gram,
+                    "text_length": len(words),
+                    "min_required": self.n_gram + 1,
+                }
+            })
             return
 
         # Estimate the potential size of the model
@@ -383,21 +334,18 @@ class MarkovChain:
         ) and self.conn_pool is not None
 
         # Log training parameters
-        if log_json:
-            log_json(
-                logger,
-                "Training started",
-                {
-                    "text_sample": text[:100] + ("..." if len(text) > 100 else ""),
-                    "word_count": len(words),
-                    "unique_words": unique_words_estimate,
-                    "estimated_transitions": estimated_transitions,
-                    "storage": "database" if use_db else "memory",
-                    "n_gram": self.n_gram,
-                    "clear_previous": clear_previous,
-                    "preprocess": preprocess,
-                },
-            )
+        self.logger.info("Training started", extra={
+            "metrics": {
+                "text_sample": text[:100] + ("..." if len(text) > 100 else ""),
+                "word_count": len(words),
+                "unique_words": unique_words_estimate,
+                "estimated_transitions": estimated_transitions,
+                "storage": "database" if use_db else "memory",
+                "n_gram": self.n_gram,
+                "clear_previous": clear_previous,
+                "preprocess": preprocess,
+            }
+        })
 
         if use_db:
             self._train_using_db(words, clear_previous)
@@ -405,16 +353,58 @@ class MarkovChain:
             self._train_using_memory(words, clear_previous)
 
         # Log training completion
-        if log_json:
-            log_json(
-                logger,
-                "Training completed",
-                {
-                    "storage": "database" if self.using_db else "memory",
-                    "n_gram": self.n_gram,
-                    "word_count": len(words),
-                },
-            )
+        self.logger.info("Training completed", extra={
+            "metrics": {
+                "storage": "database" if self.using_db else "memory",
+                "n_gram": self.n_gram,
+                "word_count": len(words),
+            }
+        })
+
+    def _process_text_for_parallel(self, args):
+        """
+        Process a text for parallel training.
+        This method is separated from train_parallel to avoid pickling issues with nested functions.
+
+        Args:
+            args (tuple): A tuple containing (idx, text)
+
+        Returns:
+            dict: A dictionary with processed transitions and statistics
+        """
+
+        idx, text = args
+        start_time = time.time()
+
+        # Preprocess text if requested
+        if hasattr(self, 'preprocessor') and self.preprocessor:
+            text = self._preprocess_text(text)
+
+        words = text.split()
+
+        # Extract transitions but don't update model yet
+        local_transitions = defaultdict(lambda: defaultdict(int))
+        for i in range(len(words) - self.n_gram):
+            if self.n_gram == 1:
+                state = words[i]
+            else:
+                state = tuple(words[i: i + self.n_gram])
+            next_word = words[i + self.n_gram]
+            local_transitions[state][next_word] += 1
+
+        # Progress info
+        processing_time = time.time() - start_time
+        transition_count = sum(len(next_words)
+                               for next_words in local_transitions.values())
+
+        return {
+            "idx": idx,
+            "transitions": local_transitions,
+            "processing_time": processing_time,
+            "word_count": len(words),
+            "transition_count": transition_count,
+            "state_count": len(local_transitions)
+        }
 
     def train_parallel(self, texts, clear_previous=True, preprocess=True, n_jobs=-1):
         """
@@ -426,8 +416,6 @@ class MarkovChain:
             preprocess (bool): Whether to preprocess texts
             n_jobs (int): Number of parallel jobs (-1 for all cores)
         """
-        from concurrent.futures import ProcessPoolExecutor
-        import multiprocessing
 
         if n_jobs < 0:
             n_jobs = multiprocessing.cpu_count()
@@ -436,41 +424,167 @@ class MarkovChain:
         if clear_previous:
             if self.using_db:
                 self._clear_db_tables()
+                self.logger.info("Cleared database tables for training", extra={
+                    "metrics": {"environment": self.environment, "n_gram": self.n_gram}
+                })
             else:
                 self.transitions.clear()
                 self.total_counts.clear()
+                self.logger.info("Cleared in-memory transitions for training", extra={
+                    "metrics": {"n_gram": self.n_gram}
+                })
 
-        # Helper function for parallel processing
-        def process_text(text):
-            if preprocess:
-                text = self._preprocess_text(text)
-            words = text.split()
+        # Log start of parallel training
+        total_texts = len(texts)
+        total_chars = sum(len(text) for text in texts)
+        avg_chars = total_chars // total_texts if total_texts > 0 else 0
 
-            # Extract transitions but don't update model yet
-            local_transitions = defaultdict(lambda: defaultdict(int))
-            for i in range(len(words) - self.n_gram):
-                if self.n_gram == 1:
-                    state = words[i]
-                else:
-                    state = tuple(words[i: i + self.n_gram])
-                next_word = words[i + self.n_gram]
-                local_transitions[state][next_word] += 1
+        self.logger.info("Parallel training started", extra={
+            "metrics": {
+                "n_jobs": n_jobs,
+                "total_texts": total_texts,
+                "total_chars": total_chars,
+                "avg_chars_per_text": avg_chars,
+                "preprocess": preprocess,
+                "n_gram": self.n_gram,
+                "storage": "database" if self.using_db else "memory"
+            }
+        })
 
-            return local_transitions
+        # Estimate time based on text volume (very rough estimate)
+        estimated_time_per_text_ms = 500 if preprocess else 200  # milliseconds per text
+        estimated_total_time = (
+            # in seconds
+            estimated_time_per_text_ms * total_texts) / (1000 * n_jobs)
+        self.logger.info(
+            f"Estimated training time: {estimated_total_time:.1f} seconds")
 
-        # Process texts in parallel
+        # Create batch tracking variables
+        # Report progress ~100 times
+        batch_size = max(100, ceil(total_texts / 100))
+        last_report_time = time.time()
+        report_interval = 2.0  # seconds between progress reports
+        processed_count = 0
+        total_transitions = 0
+        total_states = 0
+        start_time = time.time()
+
+        # Create batches for better progress tracking
+        text_batches = [(i, text) for i, text in enumerate(texts)]
+
+        # Process texts in parallel with better progress reporting
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            results = list(executor.map(process_text, texts))
+            futures = [executor.submit(
+                self._process_text_for_parallel, args) for args in text_batches]
 
-        # Combine all results
-        for local_transitions in results:
-            for state, next_words in local_transitions.items():
-                for next_word, count in next_words.items():
-                    if self.using_db:
-                        self._increment_db_transition(state, next_word, count)
-                    else:
-                        self.transitions[state][next_word] += count
-                        self.total_counts[state] += count
+            # Track and combine results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+
+                    # Update model with this batch's transitions
+                    for state, next_words in result["transitions"].items():
+                        for next_word, count in next_words.items():
+                            if self.using_db:
+                                self._increment_db_transition(
+                                    state, next_word, count)
+                            else:
+                                self.transitions[state][next_word] += count
+                                self.total_counts[state] += count
+
+                    # Update progress counters
+                    processed_count += 1
+                    total_transitions += result["transition_count"]
+                    total_states += result["state_count"]
+
+                    # Report progress at intervals
+                    current_time = time.time()
+                    if (processed_count % batch_size == 0 or processed_count == total_texts) and \
+                       (current_time - last_report_time >= report_interval):
+
+                        elapsed = current_time - start_time
+                        progress = processed_count / total_texts
+                        estimated_remaining = (
+                            elapsed / progress) - elapsed if progress > 0 else 0
+
+                        # Get memory usage
+                        process = psutil.Process()
+                        memory_info = process.memory_info()
+                        memory_mb = memory_info.rss / (1024 * 1024)
+
+                        self.logger.info("Training progress", extra={
+                            "metrics": {
+                                "processed": processed_count,
+                                "total": total_texts,
+                                "progress_percent": f"{progress*100:.1f}%",
+                                "elapsed_seconds": elapsed,
+                                "estimated_remaining_seconds": estimated_remaining,
+                                "transitions_collected": total_transitions,
+                                "states_collected": total_states,
+                                "memory_usage_mb": f"{memory_mb:.1f}"
+                            }
+                        })
+
+                        last_report_time = current_time
+
+                except Exception as e:
+                    self.logger.error("Text processing error", extra={
+                        "metrics": {"error": str(e), "error_type": type(e).__name__}
+                    })
+
+        # Log training completion
+        training_time = time.time() - start_time
+        transitions_per_second = total_transitions / \
+            training_time if training_time > 0 else 0
+
+        if self.using_db:
+            # Try to get count from database for final statistics
+            try:
+                conn = self._get_connection()
+                if conn:
+                    with conn.cursor() as cur:
+                        table_prefix = f"markov_{self.environment}"
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM {table_prefix}_transitions WHERE n_gram = %s",
+                            (self.n_gram,)
+                        )
+                        db_transitions = cur.fetchone()[0]
+
+                        cur.execute(
+                            f"SELECT COUNT(DISTINCT state) FROM {table_prefix}_transitions WHERE n_gram = %s",
+                            (self.n_gram,)
+                        )
+                        db_states = cur.fetchone()[0]
+
+                        total_transitions = db_transitions
+                        total_states = db_states
+
+                    self._return_connection(conn)
+            except Exception as e:
+                self.logger.error(f"Error getting final DB statistics: {e}")
+        else:
+            total_transitions = sum(len(next_words)
+                                    for next_words in self.transitions.values())
+            total_states = len(self.transitions)
+
+        self.logger.info("Parallel training completed", extra={
+            "metrics": {
+                "training_time_seconds": training_time,
+                "total_texts_processed": total_texts,
+                "total_states": total_states,
+                "total_transitions": total_transitions,
+                "transitions_per_second": transitions_per_second,
+                "storage": "database" if self.using_db else "memory"
+            }
+        })
+
+        return {
+            "training_time": training_time,
+            "total_texts": total_texts,
+            "total_states": total_states,
+            "total_transitions": total_transitions,
+            "transitions_per_second": transitions_per_second
+        }
 
     def _train_using_memory(self, words, clear_previous):
         """Train the model using in-memory storage"""
@@ -496,40 +610,28 @@ class MarkovChain:
             self.total_counts[current_state] += 1
 
         self.using_db = False
-        logger.info(
-            f"Trained model in memory with {len(self.transitions)} states")
 
         # Log memory training details
-        if log_json:
-            log_json(
-                logger,
-                "Memory training completed",
-                {
-                    "states_count": len(self.transitions),
-                    "transitions_count": sum(
-                        len(next_words) for next_words in self.transitions.values()
-                    ),
-                    "n_gram": self.n_gram,
-                },
-            )
+        self.logger.info("Memory training completed", extra={
+            "metrics": {
+                "states_count": len(self.transitions),
+                "transitions_count": sum(
+                    len(next_words) for next_words in self.transitions.values()
+                ),
+                "n_gram": self.n_gram,
+            }
+        })
 
     def _train_using_db(self, words, clear_previous):
         """Train the model using PostgreSQL storage"""
         conn = self._get_connection()
         if not conn:
-            logger.warning(
-                "Failed to get database connection, falling back to memory")
-
-            # Log the fallback
-            if log_json:
-                log_json(
-                    logger,
-                    "Database training fallback to memory",
-                    {
-                        "reason": "Failed to get database connection",
-                        "n_gram": self.n_gram,
-                    },
-                )
+            self.logger.warning("Database training fallback to memory", extra={
+                "metrics": {
+                    "reason": "Failed to get database connection",
+                    "n_gram": self.n_gram,
+                }
+            })
 
             self._train_using_memory(words, clear_previous)
             return
@@ -556,12 +658,9 @@ class MarkovChain:
                 conn.commit()
 
                 # Log clearing of previous data
-                if log_json:
-                    log_json(
-                        logger,
-                        "Cleared previous database training data",
-                        {"environment": self.environment, "n_gram": self.n_gram},
-                    )
+                self.logger.info("Cleared previous database training data", extra={
+                    "metrics": {"environment": self.environment, "n_gram": self.n_gram}
+                })
 
             # Process transitions in batches
             batch_size = 5000
@@ -587,16 +686,14 @@ class MarkovChain:
                     transitions_batch = []
 
                     # Log batch processing
-                    if log_json and total_transitions % (batch_size * 5) == 0:
-                        log_json(
-                            logger,
-                            "Database training progress",
-                            {
+                    if total_transitions % (batch_size * 5) == 0:
+                        self.logger.info("Database training progress", extra={
+                            "metrics": {
                                 "transitions_processed": total_transitions,
                                 "environment": self.environment,
                                 "n_gram": self.n_gram,
-                            },
-                        )
+                            }
+                        })
 
             # Insert any remaining transitions
             if transitions_batch:
@@ -620,42 +717,32 @@ class MarkovChain:
 
             conn.commit()
             self.using_db = True
-            logger.info(
-                f"Successfully trained model in {self.environment} database")
 
             # Log database training completion
-            if log_json:
-                log_json(
-                    logger,
-                    "Database training completed",
-                    {
-                        "environment": self.environment,
-                        "n_gram": self.n_gram,
-                        "total_transitions": total_transitions,
-                    },
-                )
+            self.logger.info("Database training completed", extra={
+                "metrics": {
+                    "environment": self.environment,
+                    "n_gram": self.n_gram,
+                    "total_transitions": total_transitions,
+                }
+            })
 
             # Clear in-memory structures to save RAM
             self.transitions.clear()
             self.total_counts.clear()
 
         except Exception as e:
-            logger.error(f"Database error during training: {e}")
             conn.rollback()
-            logger.warning("Falling back to in-memory training")
 
             # Log database error
-            if log_json:
-                log_json(
-                    logger,
-                    "Database training error",
-                    {
-                        "error": str(e),
-                        "environment": self.environment,
-                        "n_gram": self.n_gram,
-                        "fallback": "memory",
-                    },
-                )
+            self.logger.error("Database training error", extra={
+                "metrics": {
+                    "error": str(e),
+                    "environment": self.environment,
+                    "n_gram": self.n_gram,
+                    "fallback": "memory",
+                }
+            })
 
             self._train_using_memory(words, clear_previous)
         finally:
@@ -701,31 +788,17 @@ class MarkovChain:
             str: Normalized text ready for processing
         """
         if self.preprocessor is None:
-            logger.warning(
-                "TextPreprocessor not available, skipping normalization")
-
-            # Log skipping normalization
-            if log_json:
-                log_json(
-                    logger,
-                    "Text normalization skipped - preprocessor not available",
-                    {"text_sample": text[:50] +
-                        ("..." if len(text) > 50 else "")},
-                )
-
+            self.logger.warning("Text normalization skipped - preprocessor not available", extra={
+                "metrics": {"text_sample": text[:50] + ("..." if len(text) > 50 else "")}
+            })
             return text
         try:
-            # Log normalization start
-            if log_json:
-                log_json(
-                    logger,
-                    "Text normalization started",
-                    {
-                        "original_text_sample": text[:50]
-                        + ("..." if len(text) > 50 else ""),
-                        "text_length": len(text),
-                    },
-                )
+            self.logger.info("Text normalization started", extra={
+                "metrics": {
+                    "original_text_sample": text[:50] + ("..." if len(text) > 50 else ""),
+                    "text_length": len(text),
+                }
+            })
 
             preprocessor = TextPreprocessor()
 
@@ -739,32 +812,21 @@ class MarkovChain:
             text = preprocessor.remove_html_tags(text)
             text = preprocessor.handle_whitespace(text)
 
-            logger.info("Text normalization completed")
-
             # Log normalization result
-            if log_json:
-                log_json(
-                    logger,
-                    "Text normalization completed",
-                    {
-                        "normalized_text_sample": text[:50]
-                        + ("..." if len(text) > 50 else ""),
-                        "text_length": len(text),
-                    },
-                )
+            self.logger.info("Text normalization completed", extra={
+                "metrics": {
+                    "normalized_text_sample": text[:50] + ("..." if len(text) > 50 else ""),
+                    "text_length": len(text),
+                }
+            })
 
             return text
 
         except Exception as e:
-            logger.error(f"Error during text normalization: {e}")
-
             # Log normalization error
-            if log_json:
-                log_json(
-                    logger,
-                    "Text normalization error",
-                    {"error": str(e), "error_type": type(e).__name__},
-                )
+            self.logger.error("Text normalization error", extra={
+                "metrics": {"error": str(e), "error_type": type(e).__name__}
+            })
 
             return text
 
@@ -780,21 +842,18 @@ class MarkovChain:
             str or None: The predicted next word, or None if the current state is not in the model.
         """
         # Log prediction attempt
-        if log_json:
-            log_json(
-                logger,
-                "Prediction attempt",
-                {
-                    "current_state": (
-                        str(current_state)
-                        if not isinstance(current_state, tuple)
-                        else " ".join(current_state)
-                    ),
-                    "n_gram": self.n_gram,
-                    "storage": "database" if self.using_db else "memory",
-                    "preprocess": preprocess,
-                },
-            )
+        self.logger.info("Prediction attempt", extra={
+            "metrics": {
+                "current_state": (
+                    str(current_state)
+                    if not isinstance(current_state, tuple)
+                    else " ".join(current_state)
+                ),
+                "n_gram": self.n_gram,
+                "storage": "database" if self.using_db else "memory",
+                "preprocess": preprocess,
+            }
+        })
 
         # Handle string input with preprocessing if requested
         if isinstance(current_state, str):
@@ -808,15 +867,12 @@ class MarkovChain:
                     current_state = tuple(words[-self.n_gram:])
                 else:
                     # Log insufficient words
-                    if log_json:
-                        log_json(
-                            logger,
-                            "Prediction failed - insufficient words",
-                            {
-                                "words_provided": len(words),
-                                "words_required": self.n_gram,
-                            },
-                        )
+                    self.logger.warning("Prediction failed - insufficient words", extra={
+                        "metrics": {
+                            "words_provided": len(words),
+                            "words_required": self.n_gram,
+                        }
+                    })
                     return None
 
         # Choose the appropriate prediction method based on storage
@@ -826,21 +882,18 @@ class MarkovChain:
             next_word = self._predict_from_memory(current_state)
 
         # Log prediction result
-        if log_json:
-            log_json(
-                logger,
-                "Prediction result",
-                {
-                    "current_state": (
-                        str(current_state)
-                        if not isinstance(current_state, tuple)
-                        else " ".join(current_state)
-                    ),
-                    "next_word": next_word if next_word is not None else "None",
-                    "success": next_word is not None,
-                    "storage": "database" if self.using_db else "memory",
-                },
-            )
+        self.logger.info("Prediction result", extra={
+            "metrics": {
+                "current_state": (
+                    str(current_state)
+                    if not isinstance(current_state, tuple)
+                    else " ".join(current_state)
+                ),
+                "next_word": next_word if next_word is not None else "None",
+                "success": next_word is not None,
+                "storage": "database" if self.using_db else "memory",
+            }
+        })
 
         return next_word
 
@@ -862,7 +915,8 @@ class MarkovChain:
         """Predict next word using database storage"""
         conn = self._get_connection()
         if not conn:
-            logger.warning("Failed to get database connection for prediction")
+            self.logger.warning(
+                "Failed to get database connection for prediction")
             return None
 
         # Add environment suffix to table names
@@ -914,7 +968,7 @@ class MarkovChain:
                 return random.choices(next_words, weights=probabilities)[0]
 
         except Exception as e:
-            logger.error(f"Database error during prediction: {e}")
+            self.logger.error(f"Database error during prediction: {e}")
             return None
         finally:
             self._return_connection(conn)
@@ -932,18 +986,15 @@ class MarkovChain:
             str: Generated text.
         """
         # Log generation start
-        if log_json:
-            log_json(
-                logger,
-                "Text generation started",
-                {
-                    "start": str(start) if start else "random",
-                    "max_length": max_length,
-                    "n_gram": self.n_gram,
-                    "storage": "database" if self.using_db else "memory",
-                    "preprocess": preprocess,
-                },
-            )
+        self.logger.info("Text generation started", extra={
+            "metrics": {
+                "start": str(start) if start else "random",
+                "max_length": max_length,
+                "n_gram": self.n_gram,
+                "storage": "database" if self.using_db else "memory",
+                "preprocess": preprocess,
+            }
+        })
 
         # Determine if we have any transitions to work with
         if self.using_db:
@@ -953,12 +1004,9 @@ class MarkovChain:
 
         if not has_transitions:
             # Log no transitions available
-            if log_json:
-                log_json(
-                    logger,
-                    "Text generation failed - model not trained",
-                    {"storage": "database" if self.using_db else "memory"},
-                )
+            self.logger.warning("Text generation failed - model not trained", extra={
+                "metrics": {"storage": "database" if self.using_db else "memory"}
+            })
             return "Model not trained"
 
         # Preprocess the starting state if needed
@@ -969,12 +1017,9 @@ class MarkovChain:
         current_state = self._get_valid_start_state(start)
         if current_state is None:
             # Log no valid starting state
-            if log_json:
-                log_json(
-                    logger,
-                    "Text generation failed - no valid starting state",
-                    {"requested_start": str(start) if start else "random"},
-                )
+            self.logger.warning("Text generation failed - no valid starting state", extra={
+                "metrics": {"requested_start": str(start) if start else "random"}
+            })
             return "Could not find valid starting state"
 
         # Initialize text generation
@@ -998,19 +1043,16 @@ class MarkovChain:
             )  # Already preprocessed
             if next_word is None:
                 # Log early termination
-                if log_json:
-                    log_json(
-                        logger,
-                        "Text generation ended early - no prediction available",
-                        {
-                            "words_generated": len(text),
-                            "last_state": (
-                                str(current_state)
-                                if not isinstance(current_state, tuple)
-                                else " ".join(current_state)
-                            ),
-                        },
-                    )
+                self.logger.info("Text generation ended early - no prediction available", extra={
+                    "metrics": {
+                        "words_generated": len(text),
+                        "last_state": (
+                            str(current_state)
+                            if not isinstance(current_state, tuple)
+                            else " ".join(current_state)
+                        ),
+                    }
+                })
                 break
 
             text.append(next_word)
@@ -1033,31 +1075,26 @@ class MarkovChain:
                 current_state = next_word
 
             # Periodically log progress for long sequences
-            if log_json and i > 0 and i % 50 == 0:
-                log_json(
-                    logger,
-                    "Text generation progress",
-                    {
+            if i > 0 and i % 50 == 0:
+                self.logger.info("Text generation progress", extra={
+                    "metrics": {
                         "words_generated": len(text),
                         "percentage_complete": f"{i/remaining*100:.1f}%",
-                    },
-                )
+                    }
+                })
 
         generated_text = " ".join(text)
 
         # Log generation completion
-        if log_json:
-            log_json(
-                logger,
-                f"Text generation completed ({self.n_gram}-gram, {'PostgreSQL' if self.using_db else 'memory'})",
-                {
-                    "text": generated_text,
-                    "n_gram": self.n_gram,
-                    "start": str(start) if start else "random",
-                    "words_generated": len(text),
-                    "storage": "PostgreSQL" if self.using_db else "memory",
-                },
-            )
+        self.logger.info("Text generation completed", extra={
+            "metrics": {
+                "text": generated_text,
+                "n_gram": self.n_gram,
+                "start": str(start) if start else "random",
+                "words_generated": len(text),
+                "storage": "PostgreSQL" if self.using_db else "memory",
+            }
+        })
 
         return generated_text
 
@@ -1083,7 +1120,7 @@ class MarkovChain:
                 result = cur.fetchone()
                 return result[0] if result else False
         except Exception as e:
-            logger.error(f"Error checking transitions: {e}")
+            self.logger.error(f"Error checking transitions: {e}")
             return False
         finally:
             self._return_connection(conn)
@@ -1165,7 +1202,7 @@ class MarkovChain:
                 return state
 
         except Exception as e:
-            logger.error(f"Error getting random state: {e}")
+            self.logger.error(f"Error getting random state: {e}")
             return None
         finally:
             self._return_connection(conn)
@@ -1200,7 +1237,7 @@ class MarkovChain:
                 result = cur.fetchone()
                 return result[0] if result else False
         except Exception as e:
-            logger.error(f"Error checking state existence: {e}")
+            self.logger.error(f"Error checking state existence: {e}")
             return False
         finally:
             self._return_connection(conn)
@@ -1214,52 +1251,174 @@ class MarkovChain:
                 pass
 
     def save_model(self, filepath):
-        """Save model to a file"""
-        model_data = {
-            "n_gram": self.n_gram,
-            "environment": self.environment,
-            "memory_threshold": self.memory_threshold,
-        }
+        """
+        Save the model to ONNX format.
+        This is a standardized wrapper for export_to_onnx.
 
-        if not self.using_db:
-            model_data["transitions"] = dict(self.transitions)
-            model_data["total_counts"] = dict(self.total_counts)
+        Args:
+            filepath (str): Path to save the model
 
-        with open(filepath, "wb") as f:
-            pickle.dump(model_data, f)
-
-        logger.info(f"Model saved to {filepath}")
-        return True
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        return self.export_to_onnx(filepath)
 
     @classmethod
-    def load_model(cls, filepath, db_config=None):
-        """Load model from a file"""
-        with open(filepath, "rb") as f:
-            model_data = pickle.load(f)
+    def load_model(cls, filepath, db_config=None, environment="development", memory_threshold=10000, logger=None):
+        """
+        Load a Markov Chain model from an ONNX file.
 
-        # Create new model with same parameters
-        model = cls(
-            n_gram=model_data["n_gram"],
-            memory_threshold=model_data["memory_threshold"],
-            db_config=db_config,
-            environment=model_data["environment"],
-        )
+        Args:
+            filepath (str): Path to the ONNX model file
+            db_config (dict, optional): PostgreSQL configuration if using database storage
+            environment (str): Which environment to use ('development' or 'test')
+            memory_threshold (int): Threshold for in-memory vs DB storage
+            logger (logging.Logger, optional): Logger instance to use. If None, a new one will be created.
 
-        # Load in-memory data if present
-        if "transitions" in model_data:
-            model.transitions = defaultdict(lambda: defaultdict(int))
-            for state, next_words in model_data["transitions"].items():
-                for next_word, count in next_words.items():
-                    model.transitions[state][next_word] = count
+        Returns:
+            MarkovChain: A new MarkovChain instance with the loaded model data
+        """
+        # Ensure we have a logger
+        if logger is None:
+            logger = get_logger("markov_chain_loader")
 
-            model.total_counts = defaultdict(int)
-            for state, count in model_data["total_counts"].items():
-                model.total_counts[state] = count
+        try:
+            logger.info("ONNX model loading started", extra={
+                "metrics": {
+                    "filepath": filepath,
+                    "environment": environment
+                }
+            })
 
-            model.using_db = False
+            # Load the ONNX model
+            onnx_model = onnx.load(filepath)
 
-        logger.info(f"Model loaded from {filepath}")
-        return model
+            # Extract metadata
+            metadata = {
+                prop.key: prop.value for prop in onnx_model.metadata_props}
+
+            # Get n-gram value from metadata
+            n_gram = int(metadata.get('n_gram', '1'))
+
+            # Get vocabulary mapping
+            vocab_mapping = json.loads(metadata.get('vocab_mapping', '{}'))
+            idx_to_word = {int(idx): word for idx,
+                           word in vocab_mapping.items()}
+
+            # Create a new model instance
+            model = cls(
+                n_gram=n_gram,
+                memory_threshold=memory_threshold,
+                db_config=db_config,
+                environment=environment,
+                logger=logger
+            )
+
+            # Create an ONNX Runtime session to access the model
+            session_options = ort.SessionOptions()
+            session = ort.InferenceSession(
+                filepath, sess_options=session_options)
+
+            # Get the transition matrix
+            # Extract model inputs and outputs
+            input_name = session.get_inputs()[0].name
+            output_name = session.get_outputs()[0].name
+
+            # Get model weights (transition matrix) - depends on ONNX model structure
+            # This assumes the exported model has weights stored in a node named 'transition_matrix'
+            for node in onnx_model.graph.node:
+                if (node.op_type == 'Constant' and len(node.output) > 0 and
+                        node.output[0] == 'matrix'):
+                    # Extract the weights tensor
+                    weights_tensor = None
+                    for attr in node.attribute:
+                        if attr.name == 'value':
+                            weights_tensor = onnx.numpy_helper.to_array(attr.t)
+                            break
+
+                    if weights_tensor is not None:
+                        # Convert matrix to dictionary format
+                        transitions = defaultdict(lambda: defaultdict(int))
+                        total_counts = defaultdict(int)
+
+                        # Get vocabulary size
+                        vocab_size = weights_tensor.shape[0]
+
+                        # Populate transitions and total_counts
+                        for i in range(vocab_size):
+                            if i not in idx_to_word:
+                                continue
+
+                            state = idx_to_word[i]
+                            state_vector = weights_tensor[i]
+
+                            # Count total transitions for this state
+                            non_zero_transitions = np.where(
+                                state_vector > 0)[0]
+                            if len(non_zero_transitions) == 0:
+                                continue
+
+                            # Calculate total based on probabilities
+                            # For simplicity, we'll normalize probabilities to counts
+                            # by using a base count of 100 for the most likely transition
+                            max_prob = np.max(state_vector)
+                            scaling_factor = 100 / max_prob if max_prob > 0 else 0
+
+                            for j in non_zero_transitions:
+                                if j not in idx_to_word:
+                                    continue
+
+                                next_word = idx_to_word[j]
+                                probability = state_vector[j]
+
+                                # Convert probability to count
+                                count = int(probability * scaling_factor)
+                                if count > 0:
+                                    transitions[state][next_word] = count
+                                    total_counts[state] += count
+
+                        # Update model with the extracted transitions
+                        model.transitions = transitions
+                        model.total_counts = total_counts
+                        model.using_db = False
+
+                        # Log successful loading
+                        logger.info("ONNX model loaded successfully", extra={
+                            "metrics": {
+                                "filepath": filepath,
+                                "states_count": len(transitions),
+                                "n_gram": n_gram,
+                                "environment": environment,
+                            }
+                        })
+
+                        # Option to store in database if needed
+                        if db_config and len(transitions) > model.memory_threshold:
+                            logger.info(
+                                "Converting loaded model to database storage")
+                            model._store_model_in_db(transitions, total_counts)
+
+                        return model
+
+            # If we get here, we couldn't extract the transition matrix
+            logger.error("ONNX model loading failed", extra={
+                "metrics": {
+                    "filepath": filepath,
+                    "error": "Failed to extract transition matrix",
+                }
+            })
+
+            return None
+
+        except Exception as e:
+            logger.error("ONNX model loading failed", extra={
+                "metrics": {
+                    "filepath": filepath,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                }
+            })
+            return None
 
     def export_to_onnx(self, filepath):
         """
@@ -1276,17 +1435,13 @@ class MarkovChain:
         """
         try:
             # Log start of export process
-            logger.info(f"Starting ONNX export to {filepath}")
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX export started",
-                    {
-                        "filepath": filepath,
-                        "storage": "database" if self.using_db else "memory",
-                        "n_gram": self.n_gram,
-                    },
-                )
+            self.logger.info("ONNX export started", extra={
+                "metrics": {
+                    "filepath": filepath,
+                    "storage": "database" if self.using_db else "memory",
+                    "n_gram": self.n_gram,
+                }
+            })
 
             # Create vocabulary and index mapping
             vocab = set()
@@ -1423,36 +1578,26 @@ class MarkovChain:
             # Save the model
             onnx.save(model, filepath)
 
-            logger.info(f"Successfully exported model to {filepath}")
-
             # Log successful export
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX export completed",
-                    {
-                        "filepath": filepath,
-                        "vocab_size": vocab_size,
-                        "n_gram": self.n_gram,
-                    },
-                )
+            self.logger.info("ONNX export completed", extra={
+                "metrics": {
+                    "filepath": filepath,
+                    "vocab_size": vocab_size,
+                    "n_gram": self.n_gram,
+                }
+            })
 
             return True
 
         except Exception as e:
-            logger.error(f"Error exporting to ONNX: {e}")
-
             # Log export error
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX export failed",
-                    {
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "filepath": filepath,
-                    },
-                )
+            self.logger.error("ONNX export failed", extra={
+                "metrics": {
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "filepath": filepath,
+                }
+            })
 
             return False
 
@@ -1460,7 +1605,8 @@ class MarkovChain:
         """Extract vocabulary and transitions from database"""
         conn = self._get_connection()
         if not conn:
-            logger.error("Failed to get database connection for ONNX export")
+            self.logger.error(
+                "Failed to get database connection for ONNX export")
             return set(), {}
 
         # Add environment suffix to table names
@@ -1497,7 +1643,8 @@ class MarkovChain:
             return vocab, transitions
 
         except Exception as e:
-            logger.error(f"Database error during vocabulary extraction: {e}")
+            self.logger.error(
+                f"Database error during vocabulary extraction: {e}")
             return set(), {}
         finally:
             self._return_connection(conn)
@@ -1525,180 +1672,10 @@ class MarkovChain:
                 return result[0] if result else 0
 
         except Exception as e:
-            logger.error(f"Database error getting total count: {e}")
+            self.logger.error(f"Database error getting total count: {e}")
             return 0
         finally:
             self._return_connection(conn)
-
-    @classmethod
-    def load_from_onnx(cls, filepath, db_config=None, environment="development", memory_threshold=10000):
-        """
-        Load a Markov Chain model from an ONNX file.
-
-        This method loads an ONNX model previously exported with export_to_onnx() and
-        converts it back to a MarkovChain instance.
-
-        Args:
-            filepath (str): Path to the ONNX model file
-            db_config (dict, optional): PostgreSQL configuration if using database storage
-            environment (str): Which environment to use ('development' or 'test')
-            memory_threshold (int): Threshold for in-memory vs DB storage
-
-        Returns:
-            MarkovChain: A new MarkovChain instance with the loaded model data
-        """
-        try:
-            # Log start of loading process
-            logger.info(
-                f"Loading Markov Chain model from ONNX file: {filepath}")
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX model loading started",
-                    {"filepath": filepath, "environment": environment},
-                )
-
-            # Load the ONNX model
-            onnx_model = onnx.load(filepath)
-
-            # Extract metadata
-            metadata = {
-                prop.key: prop.value for prop in onnx_model.metadata_props}
-
-            # Get n-gram value from metadata
-            n_gram = int(metadata.get('n_gram', '1'))
-
-            # Get vocabulary mapping
-            vocab_mapping = json.loads(metadata.get('vocab_mapping', '{}'))
-            idx_to_word = {int(idx): word for idx,
-                           word in vocab_mapping.items()}
-
-            # Create a new model instance
-            model = cls(
-                n_gram=n_gram,
-                memory_threshold=memory_threshold,
-                db_config=db_config,
-                environment=environment
-            )
-
-            # Create an ONNX Runtime session to access the model
-            session_options = ort.SessionOptions()
-            session = ort.InferenceSession(
-                filepath, sess_options=session_options)
-
-            # Get the transition matrix
-            # Extract model inputs and outputs
-            input_name = session.get_inputs()[0].name
-            output_name = session.get_outputs()[0].name
-
-            # Get model weights (transition matrix) - depends on ONNX model structure
-            # This assumes the exported model has weights stored in a node named 'transition_matrix'
-            for node in onnx_model.graph.node:
-                if node.op_type == 'Constant' and len(node.output) > 0 and node.output[0] == 'matrix':
-                    # Extract the weights tensor
-                    weights_tensor = None
-                    for attr in node.attribute:
-                        if attr.name == 'value':
-                            weights_tensor = onnx.numpy_helper.to_array(attr.t)
-                            break
-
-                    if weights_tensor is not None:
-                        # Convert matrix to dictionary format
-                        transitions = defaultdict(lambda: defaultdict(int))
-                        total_counts = defaultdict(int)
-
-                        # Get vocabulary size
-                        vocab_size = weights_tensor.shape[0]
-
-                        # Populate transitions and total_counts
-                        for i in range(vocab_size):
-                            if i not in idx_to_word:
-                                continue
-
-                            state = idx_to_word[i]
-                            state_vector = weights_tensor[i]
-
-                            # Count total transitions for this state
-                            non_zero_transitions = np.where(
-                                state_vector > 0)[0]
-                            if len(non_zero_transitions) == 0:
-                                continue
-
-                            # Calculate total based on probabilities
-                            # For simplicity, we'll normalize probabilities to counts
-                            # by using a base count of 100 for the most likely transition
-                            max_prob = np.max(state_vector)
-                            scaling_factor = 100 / max_prob if max_prob > 0 else 0
-
-                            for j in non_zero_transitions:
-                                if j not in idx_to_word:
-                                    continue
-
-                                next_word = idx_to_word[j]
-                                probability = state_vector[j]
-
-                                # Convert probability to count
-                                count = int(probability * scaling_factor)
-                                if count > 0:
-                                    transitions[state][next_word] = count
-                                    total_counts[state] += count
-
-                        # Update model with the extracted transitions
-                        model.transitions = transitions
-                        model.total_counts = total_counts
-                        model.using_db = False
-
-                        logger.info(
-                            f"Successfully loaded ONNX model with {len(transitions)} states")
-
-                        # Log successful loading
-                        if log_json:
-                            log_json(
-                                logger,
-                                "ONNX model loaded successfully",
-                                {
-                                    "filepath": filepath,
-                                    "states_count": len(transitions),
-                                    "n_gram": n_gram,
-                                    "environment": environment,
-                                }
-                            )
-
-                        # Option to store in database if needed
-                        if db_config and len(transitions) > model.memory_threshold:
-                            logger.info(
-                                "Converting loaded model to database storage")
-                            model._store_model_in_db(transitions, total_counts)
-
-                        return model
-
-            # If we get here, we couldn't extract the transition matrix
-            logger.error("Failed to extract transition matrix from ONNX model")
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX model loading failed",
-                    {
-                        "filepath": filepath,
-                        "error": "Failed to extract transition matrix",
-                    }
-                )
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error loading ONNX model: {e}")
-            if log_json:
-                log_json(
-                    logger,
-                    "ONNX model loading failed",
-                    {
-                        "filepath": filepath,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    }
-                )
-            return None
 
     def _store_model_in_db(self, transitions, total_counts):
         """
@@ -1709,13 +1686,13 @@ class MarkovChain:
             total_counts: Dictionary of total counts to store
         """
         if not self.conn_pool:
-            logger.warning(
+            self.logger.warning(
                 "No database connection available, keeping model in memory")
             return False
 
         conn = self._get_connection()
         if not conn:
-            logger.warning(
+            self.logger.warning(
                 "Failed to get database connection, keeping model in memory")
             return False
 
@@ -1795,12 +1772,12 @@ class MarkovChain:
             self.transitions.clear()
             self.total_counts.clear()
 
-            logger.info(
+            self.logger.info(
                 f"Successfully stored model in {self.environment} database")
             return True
 
         except Exception as e:
-            logger.error(f"Error storing model in database: {e}")
+            self.logger.error(f"Error storing model in database: {e}")
             conn.rollback()
             return False
 
