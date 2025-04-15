@@ -3,8 +3,6 @@ import json
 import os
 from datetime import datetime
 import inspect
-import sys
-
 
 # Configure JSON logging
 class JsonLogger(logging.Formatter):

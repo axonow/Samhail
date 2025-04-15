@@ -19,27 +19,21 @@ Dependencies:
     - Database configuration from configs/database.yaml
 """
 
-from utils.loggers.json_logger import get_logger, log_json
+from utils.loggers.json_logger import get_logger
 from models.production_models.markov_chain.markov_chain import MarkovChain
 import os
 import json
 import glob
-import shutil
 import logging
 import multiprocessing
 import sys
 import yaml
 from datetime import datetime
-from pathlib import Path
 
 # Add project root to path to ensure imports work correctly
 project_root = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, project_root)
-
-# Import MarkovChain class
-
-# Import JSON logger
 
 
 class ExportMarkovChain:
@@ -112,22 +106,16 @@ class ExportMarkovChain:
             self.logger = logging.getLogger("export_markov_chain")
 
         # Log initialization
-        self.logger.info("ExportMarkovChain initialized")
-        if log_json:
-            log_json(
-                self.logger,
-                "ExportMarkovChain initialized",
-                {
-                    "data_dir": self.data_dir,
-                    "n_gram": self.n_gram,
-                    "memory_threshold": self.memory_threshold,
-                    "environment": self.environment,
-                    "db_config_host": self.db_config.get("host") if self.db_config else None,
-                    "db_config_dbname": self.db_config.get("dbname") if self.db_config else None,
-                    "log_path": self.log_path,
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
+        self.logger.info("ExportMarkovChain initialized", extra={
+            "data_dir": self.data_dir,
+            "n_gram": self.n_gram,
+            "memory_threshold": self.memory_threshold,
+            "environment": self.environment,
+            "db_config_host": self.db_config.get("host") if self.db_config else None,
+            "db_config_dbname": self.db_config.get("dbname") if self.db_config else None,
+            "log_path": self.log_path,
+            "timestamp": datetime.now().isoformat()
+        })
 
     def _setup_logging(self):
         """Set up JSON logging with file output."""
@@ -205,36 +193,25 @@ class ExportMarkovChain:
             bool: True if directory exists and contains JSON files, False otherwise
         """
         if not os.path.exists(self.data_dir):
-            self.logger.error(f"Data directory not found: {self.data_dir}")
-            if log_json:
-                log_json(
-                    self.logger,
-                    "Data directory not found",
-                    {"data_dir": self.data_dir, "error": "Directory does not exist"}
-                )
+            self.logger.error(f"Data directory not found: {self.data_dir}", extra={
+                "data_dir": self.data_dir,
+                "error": "Directory does not exist"
+            })
             return False
 
         # Check if there are JSON files in the directory
         json_files = glob.glob(os.path.join(self.data_dir, "*.json"))
         if not json_files:
-            self.logger.error(
-                f"No JSON files found in data directory: {self.data_dir}")
-            if log_json:
-                log_json(
-                    self.logger,
-                    "No JSON files found",
-                    {"data_dir": self.data_dir, "error": "No JSON files in directory"}
-                )
+            self.logger.error(f"No JSON files found in data directory: {self.data_dir}", extra={
+                "data_dir": self.data_dir,
+                "error": "No JSON files in directory"
+            })
             return False
 
-        self.logger.info(
-            f"Found {len(json_files)} JSON files in {self.data_dir}")
-        if log_json:
-            log_json(
-                self.logger,
-                "JSON files found",
-                {"data_dir": self.data_dir, "file_count": len(json_files)}
-            )
+        self.logger.info(f"Found {len(json_files)} JSON files in {self.data_dir}", extra={
+            "data_dir": self.data_dir,
+            "file_count": len(json_files)
+        })
         return True
 
     def load_json_texts(self):
@@ -273,43 +250,28 @@ class ExportMarkovChain:
                 # Log progress periodically with bold formatting
                 if processed_count % 10 == 0 or processed_count == file_count:
                     progress_message = f"Processed {processed_count}/{file_count} JSON files - {(processed_count/file_count)*100:.1f}%"
-                    self.logger.info(progress_message)
+                    self.logger.info(progress_message, extra={
+                        "processed": processed_count,
+                        "total": file_count,
+                        "percentage": f"{(processed_count/file_count)*100:.1f}%"
+                    })
                     # Print bold text to terminal
                     print(f"\033[1m{progress_message}\033[0m")
 
-                    if log_json:
-                        log_json(
-                            self.logger,
-                            "JSON loading progress",
-                            {
-                                "processed": processed_count,
-                                "total": file_count,
-                                "percentage": f"{(processed_count/file_count)*100:.1f}%"
-                            }
-                        )
-
             except Exception as e:
-                self.logger.error(
-                    f"Error processing JSON file {json_file}: {e}")
-                if log_json:
-                    log_json(
-                        self.logger,
-                        "JSON processing error",
-                        {"file": json_file, "error": str(
-                            e), "error_type": type(e).__name__}
-                    )
+                self.logger.error(f"Error processing JSON file {json_file}: {e}", extra={
+                    "file": json_file,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                })
 
         completion_message = f"Loaded {len(texts)} text entries from {processed_count} JSON files"
-        self.logger.info(completion_message)
+        self.logger.info(completion_message, extra={
+            "text_count": len(texts),
+            "file_count": processed_count
+        })
         # Print bold completion message
         print(f"\033[1m{completion_message}\033[0m")
-
-        if log_json:
-            log_json(
-                self.logger,
-                "JSON loading completed",
-                {"text_count": len(texts), "file_count": processed_count}
-            )
 
         return texts
 
@@ -522,19 +484,17 @@ class ExportMarkovChain:
         # Define the export filepath
         export_dir = os.path.dirname(os.path.abspath(__file__))
         export_filepath = os.path.join(
-            export_dir, "model0.0.1-pretraining.onnx")
+            export_dir, "model0.0.1-alpha.onnx")
 
         export_start_message = f"Exporting model to ONNX format: {export_filepath}"
         self.logger.info(export_start_message)
         # Print bold export start message
         print(f"\033[1m{export_start_message}\033[0m")
 
-        if log_json:
-            log_json(
-                self.logger,
-                "ONNX export started",
-                {"filepath": export_filepath, "n_gram": self.n_gram}
-            )
+        self.logger.info("ONNX export started", extra={
+            "filepath": export_filepath,
+            "n_gram": self.n_gram
+        })
 
         # Export to ONNX format
         start_time = datetime.now()
@@ -547,16 +507,11 @@ class ExportMarkovChain:
             # Print bold success message
             print(f"\033[1m{completion_message}\033[0m")
 
-            if log_json:
-                log_json(
-                    self.logger,
-                    "ONNX export completed",
-                    {
-                        "filepath": export_filepath,
-                        "export_time_seconds": export_time,
-                        "file_size_bytes": os.path.getsize(export_filepath) if os.path.exists(export_filepath) else 0
-                    }
-                )
+            self.logger.info("ONNX export completed", extra={
+                "filepath": export_filepath,
+                "export_time_seconds": export_time,
+                "file_size_bytes": os.path.getsize(export_filepath) if os.path.exists(export_filepath) else 0
+            })
             return export_filepath
         else:
             error_message = "Failed to export model to ONNX format"
@@ -564,12 +519,9 @@ class ExportMarkovChain:
             # Print bold error message
             print(f"\033[1m{error_message}\033[0m")
 
-            if log_json:
-                log_json(
-                    self.logger,
-                    "ONNX export failed",
-                    {"filepath": export_filepath}
-                )
+            self.logger.error("ONNX export failed", extra={
+                "filepath": export_filepath
+            })
             return None
 
     def run(self):

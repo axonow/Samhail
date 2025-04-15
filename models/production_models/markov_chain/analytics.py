@@ -1,39 +1,16 @@
-from utils.loggers.json_logger import get_logger, log_json
-import logging
-import json
 import math
 import random
 import time
-from collections import defaultdict
 import uuid
-from datetime import datetime
 import os
 import sys
+
+from utils.loggers.json_logger import log_json
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, project_root)
-
-# Import the enhanced JSON logger from utils
-
-# Setup default logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,
-)
-
-# Set up the JSON logger
-# Define the log file path for consistent logging across modules
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-log_file_path = os.path.join(log_dir, "test_run.log")
-
-# Configure the JSON logger
-if get_logger:
-    logger = get_logger("markov_analytics", log_file=log_file_path)
-else:
-    logger = logging.getLogger("markov_analytics")
 
 
 class MarkovChainAnalytics:
@@ -65,17 +42,15 @@ class MarkovChainAnalytics:
         self.analytics_id = str(uuid.uuid4())[:8]
 
         # Log initialization
-        log_json(
-            self.logger,
-            "MarkovChainAnalytics initialized",
-            {
+        self.logger.info("MarkovChainAnalytics initialized", extra={
+            "metrics": {
                 "model_type": "markov_chain",
                 "n_gram": self.markov_chain.n_gram,
                 "storage_type": ("database" if self.markov_chain.using_db else "memory"),
                 "environment": self.markov_chain.environment,
                 "analytics_id": self.analytics_id,
-            },
-        )
+            }
+        })
 
     def analyze_model(self):
         """
@@ -269,26 +244,13 @@ class MarkovChainAnalytics:
         stats["analysis_execution_time"] = execution_time
 
         # Log results
-        if log_json:
-            log_json(
-                self.logger,
-                "Model analysis completed",
-                {
-                    "model_metrics": stats,
-                    "execution_time": execution_time,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            # Legacy logging
-            extra = {
-                "metrics": {"model_metrics": stats, "execution_time": execution_time},
+        self.logger.info("Model analysis completed", extra={
+            "metrics": {
+                "model_metrics": stats,
+                "execution_time": execution_time,
                 "model_id": self.analytics_id,
-                "operation": "analyze_model",
             }
-            self.logger.info(
-                f"Model analysis completed in {execution_time:.3f}s", extra=extra
-            )
+        })
 
         return stats
 
@@ -315,33 +277,16 @@ class MarkovChainAnalytics:
         # Log metrics
         execution_time = time.time() - start_time
 
-        if log_json:
-            log_json(
-                self.logger,
-                f"Transition probability: {current_state} → {next_word}",
-                {
-                    "current_state": str(current_state),
-                    "next_word": next_word,
-                    "probability": prob,
-                    "execution_time": execution_time,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "current_state": str(current_state),
-                    "next_word": next_word,
-                    "probability": prob,
-                    "execution_time": execution_time,
-                },
-                "model_id": self.analytics_id,
-                "operation": "get_transition_probability",
-            }
-            self.logger.debug(
-                f"Transition probability: {current_state} → {next_word} = {prob}",
-                extra=extra,
-            )
+        self.logger.debug(f"Transition probability: {current_state} → {next_word} = {prob}", extra={
+            "metrics": {
+                "current_state": str(current_state),
+                "next_word": next_word,
+                "probability": prob,
+                "execution_time": execution_time,
+            },
+            "model_id": self.analytics_id,
+            "operation": "get_transition_probability",
+        })
 
         return prob
 
@@ -406,13 +351,14 @@ class MarkovChainAnalytics:
                 return transition_count / total_count
 
         except Exception as e:
-            extra = {
-                "metrics": {"error_type": type(e).__name__, "error_message": str(e)},
+            self.logger.error(f"Error calculating transition probability: {e}", extra={
+                "metrics": {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                },
                 "model_id": self.analytics_id,
                 "operation": "get_db_transition_probability",
-            }
-            self.logger.error(
-                f"Error calculating transition probability: {e}", extra=extra)
+            })
             return 0.0
         finally:
             self.markov_chain._return_connection(conn)
@@ -432,32 +378,17 @@ class MarkovChainAnalytics:
         sequence_id = str(uuid.uuid4())[:8]
 
         # Log start of sequence scoring
-        if log_json:
-            log_json(
-                self.logger,
-                "Starting sequence scoring",
-                {
-                    "sequence": sequence[:50] + ("..." if len(sequence) > 50 else ""),
-                    "sequence_length": len(sequence),
-                    "word_count": len(sequence.split()),
-                    "preprocess": preprocess,
-                    "sequence_id": sequence_id,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "sequence": sequence[:50] + ("..." if len(sequence) > 50 else ""),
-                    "sequence_length": len(sequence),
-                    "word_count": len(sequence.split()),
-                    "preprocess": preprocess,
-                    "sequence_id": sequence_id,
-                },
-                "model_id": self.analytics_id,
-                "operation": "score_sequence_start",
-            }
-            self.logger.debug(f"Starting sequence scoring", extra=extra)
+        self.logger.debug("Starting sequence scoring", extra={
+            "metrics": {
+                "sequence": sequence[:50] + ("..." if len(sequence) > 50 else ""),
+                "sequence_length": len(sequence),
+                "word_count": len(sequence.split()),
+                "preprocess": preprocess,
+                "sequence_id": sequence_id,
+            },
+            "model_id": self.analytics_id,
+            "operation": "score_sequence_start",
+        })
 
         if preprocess and hasattr(self.markov_chain, "_preprocess_text"):
             preprocess_start = time.time()
@@ -469,18 +400,15 @@ class MarkovChainAnalytics:
         words = sequence.split()
         if len(words) <= self.markov_chain.n_gram:
             # Log early return
-            if log_json:
-                log_json(
-                    self.logger,
-                    "Sequence too short for scoring",
-                    {
-                        "score": 0.0,
-                        "reason": "sequence_too_short",
-                        "execution_time": time.time() - start_time,
-                        "sequence_id": sequence_id,
-                        "model_id": self.analytics_id,
-                    },
-                )
+            self.logger.debug("Sequence too short for scoring", extra={
+                "metrics": {
+                    "score": 0.0,
+                    "reason": "sequence_too_short",
+                    "execution_time": time.time() - start_time,
+                    "sequence_id": sequence_id,
+                    "model_id": self.analytics_id,
+                }
+            })
 
             return 0.0
 
@@ -523,38 +451,19 @@ class MarkovChainAnalytics:
         execution_time = time.time() - start_time
 
         # Log results
-        if log_json:
-            log_json(
-                self.logger,
-                f"Sequence scored with result {final_score:.4f}",
-                {
-                    "sequence": sequence,
-                    "score": final_score,
-                    "transitions_checked": count + zero_prob_transitions,
-                    "zero_probability_transitions": zero_prob_transitions,
-                    "execution_time": execution_time,
-                    "preprocess_time": preprocess_time,
-                    "transitions_sample": transitions[:5] if transitions else [],
-                    "sequence_id": sequence_id,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "sequence_id": sequence_id,
-                    "score": final_score,
-                    "transitions_checked": count + zero_prob_transitions,
-                    "zero_probability_transitions": zero_prob_transitions,
-                    "execution_time": execution_time,
-                    "preprocess_time": preprocess_time,
-                    "transitions_sample": transitions[:5] if transitions else [],
-                },
-                "model_id": self.analytics_id,
-                "operation": "score_sequence_complete",
-            }
-            self.logger.info(
-                f"Sequence scored with result {final_score:.4f}", extra=extra)
+        self.logger.info(f"Sequence scored with result {final_score:.4f}", extra={
+            "metrics": {
+                "sequence_id": sequence_id,
+                "score": final_score,
+                "transitions_checked": count + zero_prob_transitions,
+                "zero_probability_transitions": zero_prob_transitions,
+                "execution_time": execution_time,
+                "preprocess_time": preprocess_time,
+                "transitions_sample": transitions[:5] if transitions else [],
+            },
+            "model_id": self.analytics_id,
+            "operation": "score_sequence_complete",
+        })
 
         return final_score
 
@@ -576,32 +485,17 @@ class MarkovChainAnalytics:
         text_id = str(uuid.uuid4())[:8]
 
         # Log start of perplexity calculation
-        if log_json:
-            log_json(
-                self.logger,
-                "Starting perplexity calculation",
-                {
-                    "text_sample": text[:50] + ("..." if len(text) > 50 else ""),
-                    "text_length": len(text),
-                    "word_count": len(text.split()),
-                    "preprocess": preprocess,
-                    "text_id": text_id,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "text_sample": text[:50] + ("..." if len(text) > 50 else ""),
-                    "text_length": len(text),
-                    "word_count": len(text.split()),
-                    "preprocess": preprocess,
-                    "text_id": text_id,
-                },
-                "model_id": self.analytics_id,
-                "operation": "perplexity_start",
-            }
-            self.logger.info(f"Starting perplexity calculation", extra=extra)
+        self.logger.info("Starting perplexity calculation", extra={
+            "metrics": {
+                "text_sample": text[:50] + ("..." if len(text) > 50 else ""),
+                "text_length": len(text),
+                "word_count": len(text.split()),
+                "preprocess": preprocess,
+                "text_id": text_id,
+            },
+            "model_id": self.analytics_id,
+            "operation": "perplexity_start",
+        })
 
         if preprocess and hasattr(self.markov_chain, "_preprocess_text"):
             preprocess_start = time.time()
@@ -613,18 +507,15 @@ class MarkovChainAnalytics:
         words = text.split()
         if len(words) <= self.markov_chain.n_gram:
             # Log early return for text too short
-            if log_json:
-                log_json(
-                    self.logger,
-                    "Text too short for perplexity calculation",
-                    {
-                        "perplexity": float("inf"),
-                        "reason": "text_too_short",
-                        "execution_time": time.time() - start_time,
-                        "text_id": text_id,
-                        "model_id": self.analytics_id,
-                    },
-                )
+            self.logger.info("Text too short for perplexity calculation", extra={
+                "metrics": {
+                    "perplexity": float("inf"),
+                    "reason": "text_too_short",
+                    "execution_time": time.time() - start_time,
+                    "text_id": text_id,
+                    "model_id": self.analytics_id,
+                }
+            })
 
             return float("inf")
 
@@ -660,36 +551,18 @@ class MarkovChainAnalytics:
         execution_time = time.time() - start_time
 
         # Log results
-        if log_json:
-            log_json(
-                self.logger,
-                f"Perplexity calculation complete: {perplexity:.4f}",
-                {
-                    "text_id": text_id,
-                    "perplexity": perplexity,
-                    "tokens_processed": token_count,
-                    "zero_probability_tokens": zero_prob_count,
-                    "execution_time": execution_time,
-                    "preprocess_time": preprocess_time,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "text_id": text_id,
-                    "perplexity": perplexity,
-                    "tokens_processed": token_count,
-                    "zero_probability_tokens": zero_prob_count,
-                    "execution_time": execution_time,
-                    "preprocess_time": preprocess_time,
-                },
-                "model_id": self.analytics_id,
-                "operation": "perplexity_complete",
-            }
-            self.logger.info(
-                f"Perplexity calculation complete: {perplexity:.4f}", extra=extra
-            )
+        self.logger.info(f"Perplexity calculation complete: {perplexity:.4f}", extra={
+            "metrics": {
+                "text_id": text_id,
+                "perplexity": perplexity,
+                "tokens_processed": token_count,
+                "zero_probability_tokens": zero_prob_count,
+                "execution_time": execution_time,
+                "preprocess_time": preprocess_time,
+            },
+            "model_id": self.analytics_id,
+            "operation": "perplexity_complete",
+        })
 
         return perplexity
 
@@ -707,34 +580,15 @@ class MarkovChainAnalytics:
         start_time = time.time()
 
         # Log start of sequence finding
-        if log_json:
-            log_json(
-                self.logger,
-                f"Finding high probability sequences of length {length}",
-                {
-                    "sequence_length": length,
-                    "top_n": top_n,
-                    "storage_type": (
-                        "database" if self.markov_chain.using_db else "memory"
-                    ),
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "sequence_length": length,
-                    "top_n": top_n,
-                    "storage_type": (
-                        "database" if self.markov_chain.using_db else "memory"
-                    ),
-                },
-                "model_id": self.analytics_id,
-                "operation": "find_sequences_start",
-            }
-            self.logger.info(
-                f"Finding high probability sequences of length {length}", extra=extra
-            )
+        self.logger.info(f"Finding high probability sequences of length {length}", extra={
+            "metrics": {
+                "sequence_length": length,
+                "top_n": top_n,
+                "storage_type": ("database" if self.markov_chain.using_db else "memory"),
+            },
+            "model_id": self.analytics_id,
+            "operation": "find_sequences_start",
+        })
 
         if self.markov_chain.using_db:
             results = self._find_high_probability_sequences_db(length, top_n)
@@ -755,31 +609,15 @@ class MarkovChainAnalytics:
             )
 
         # Log results
-        if log_json:
-            log_json(
-                self.logger,
-                f"Found {len(results)} high probability sequences",
-                {
-                    "execution_time": execution_time,
-                    "results_count": len(results),
-                    "top_results": result_metrics,
-                    "model_id": self.analytics_id,
-                },
-            )
-        else:
-            extra = {
-                "metrics": {
-                    "execution_time": execution_time,
-                    "results_count": len(results),
-                    "top_results": result_metrics,
-                },
-                "model_id": self.analytics_id,
-                "operation": "find_sequences_complete",
-            }
-            self.logger.info(
-                f"Found {len(results)} high probability sequences in {execution_time:.3f}s",
-                extra=extra,
-            )
+        self.logger.info(f"Found {len(results)} high probability sequences in {execution_time:.3f}s", extra={
+            "metrics": {
+                "execution_time": execution_time,
+                "results_count": len(results),
+                "top_results": result_metrics,
+            },
+            "model_id": self.analytics_id,
+            "operation": "find_sequences_complete",
+        })
 
         return results
 
@@ -1074,11 +912,22 @@ class MarkovChainAnalytics:
 
 
 # Example usage
-def example_analytics():
+def example_analytics(logger=None):
+    """
+    Example function demonstrating analytics usage
+
+    Args:
+        logger: A logger instance for logging. If None, a default logger will be used.
+    """
     from markov_chain import MarkovChain
+    from utils.loggers.json_logger import get_logger
+
+    # Ensure we have a logger
+    if logger is None:
+        logger = get_logger("markov_chain_analytics_example")
 
     # Create and train a simple model
-    markov = MarkovChain(n_gram=2)
+    markov = MarkovChain(n_gram=2, logger=logger)
     text = "the cat sat on the mat. the dog sat on the floor. the cat saw the dog."
     markov.train(text)
 

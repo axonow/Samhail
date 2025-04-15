@@ -1,32 +1,26 @@
+import os
+import sys
+import time
+import json
+import random
+import datetime
+import multiprocessing
+import concurrent.futures
+import numpy as np
+
 from utils.loggers.json_logger import get_logger
 from collections import defaultdict
-import random
-import os
-import json
-import yaml
-import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import execute_values
-import logging
-import sys
-import datetime
-import numpy as np
-import onnx
 from onnx import helper, TensorProto
-import onnxruntime as ort
+import onnx
 from concurrent.futures import ProcessPoolExecutor
-import multiprocessing
-import time
-import psutil
 from math import ceil
-import concurrent.futures
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, project_root)
-
-# Import the enhanced JSON logger from utils
 
 # Import the TextPreprocessor class
 try:
