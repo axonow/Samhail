@@ -1,7 +1,4 @@
 # Example usage for text generation
-from models.production_models.markov_chain.analytics import MarkovChainAnalytics
-from models.production_models.markov_chain.markov_chain import MarkovChain
-from utils.loggers.json_logger import get_logger, log_json, setup_log_file
 import os
 import sys
 import json
@@ -13,8 +10,11 @@ project_root = os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
 sys.path.insert(0, project_root)
 
 # Import the enhanced JSON logger from utils
+from utils.loggers.json_logger import get_logger, log_json, setup_log_file
 
 # Import the MarkovChain and analytics modules
+from models.production_models.markov_chain.markov_chain import MarkovChain
+from models.production_models.markov_chain.analytics import MarkovChainAnalytics
 
 # Initialize the logger for this test run
 logger = get_logger("test_run")
