@@ -60,7 +60,8 @@ class ExportMarkovChain:
         n_gram=2,
         memory_threshold=1000000,  # Set high threshold for memory optimization with 8GB dataset
         environment="development",
-        log_path="logs/train_and_export.log"
+        log_path="logs/train_and_export.log",
+        logger=None
     ):
         """
         Initialize the ExportMarkovChain class.
@@ -71,6 +72,7 @@ class ExportMarkovChain:
             memory_threshold (int): Threshold for memory vs. database storage
             environment (str): Environment setting ('development' or 'test')
             log_path (str): Path to the log file
+            logger (Logger, optional): Logger instance to use for logging
         """
         # Base attributes
         self.data_dir = os.path.join(project_root, data_dir)
@@ -86,35 +88,25 @@ class ExportMarkovChain:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        # Clear previous log file if it exists
-        if os.path.exists(self.log_path):
-            with open(self.log_path, 'w') as f:
-                f.write("")  # Clear the file
-
-        # Configure the logger
-        if get_logger:
+        # Configure the logger - use provided logger or create a new one
+        if logger is None:
             self.logger = get_logger(
                 "export_markov_chain", log_file=self.log_path)
         else:
-            # Fallback to basic logging
-            logging.basicConfig(
-                level=logging.INFO,
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                filename=self.log_path,
-                filemode='a'
-            )
-            self.logger = logging.getLogger("export_markov_chain")
+            self.logger = logger
 
         # Log initialization
         self.logger.info("ExportMarkovChain initialized", extra={
-            "data_dir": self.data_dir,
-            "n_gram": self.n_gram,
-            "memory_threshold": self.memory_threshold,
-            "environment": self.environment,
-            "db_config_host": self.db_config.get("host") if self.db_config else None,
-            "db_config_dbname": self.db_config.get("dbname") if self.db_config else None,
-            "log_path": self.log_path,
-            "timestamp": datetime.now().isoformat()
+            "metrics": {
+                "data_dir": self.data_dir,
+                "n_gram": self.n_gram,
+                "memory_threshold": self.memory_threshold,
+                "environment": self.environment,
+                "db_config_host": self.db_config.get("host") if self.db_config else None,
+                "db_config_dbname": self.db_config.get("dbname") if self.db_config else None,
+                "log_path": self.log_path,
+                "timestamp": datetime.now().isoformat()
+            }
         })
 
     def _setup_logging(self):
@@ -129,19 +121,8 @@ class ExportMarkovChain:
             with open(self.log_path, 'w') as f:
                 f.write("")  # Clear the file
 
-        # Configure the logger
-        if get_logger:
-            self.logger = get_logger(
-                "export_markov_chain", log_file=self.log_path)
-        else:
-            # Fallback to basic logging
-            logging.basicConfig(
-                level=logging.INFO,
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                filename=self.log_path,
-                filemode='a'
-            )
-            self.logger = logging.getLogger("export_markov_chain")
+        # Configure the logger - Always use JSON logger
+        self.logger = get_logger("export_markov_chain", log_file=self.log_path)
 
     def _load_db_config(self):
         """
