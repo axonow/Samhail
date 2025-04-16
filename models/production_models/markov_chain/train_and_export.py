@@ -19,8 +19,8 @@ Dependencies:
     - Database configuration from configs/database.yaml
 """
 
-from utils.loggers.json_logger import get_logger
 from models.production_models.markov_chain.markov_chain import MarkovChain
+from utils.loggers.json_logger import get_logger
 import os
 import json
 import glob
@@ -30,10 +30,11 @@ import sys
 import yaml
 from datetime import datetime
 
-# Add project root to path to ensure imports work correctly
-project_root = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "..", ".."))
-sys.path.insert(0, project_root)
+# Add project root to Python path directly to avoid circular imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 
 class ExportMarkovChain:

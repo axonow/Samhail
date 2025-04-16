@@ -17,11 +17,6 @@ import onnx
 from concurrent.futures import ProcessPoolExecutor
 from math import ceil
 
-# Add project root to Python path
-project_root = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "..", ".."))
-sys.path.insert(0, project_root)
-
 # Import the TextPreprocessor class
 try:
     from data_preprocessing.text_preprocessor import TextPreprocessor
