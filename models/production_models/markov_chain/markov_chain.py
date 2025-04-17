@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import json
 import random
@@ -8,17 +7,16 @@ import multiprocessing
 import concurrent.futures
 import numpy as np
 import psutil
-import yaml
-import onnxruntime as ort
+from math import ceil
 
 from utils.loggers.json_logger import get_logger
+from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
 from collections import defaultdict
-from psycopg2 import pool
 from psycopg2.extras import execute_values
 from onnx import helper, TensorProto
 import onnx
+import onnxruntime as ort
 from concurrent.futures import ProcessPoolExecutor
-from math import ceil
 
 # Import the TextPreprocessor class
 try:
@@ -61,7 +59,7 @@ class MarkovChain:
             total_counts: Dictionary for in-memory total counts
             n_gram: The size of word sequences to use as states
             using_db: Flag indicating if DB storage is active
-            conn_pool: Connection pool for PostgreSQL (if used)
+            db_adapter: Database adapter for PostgreSQL operations
             environment: Current environment setting ('development' or 'test')
             logger: Logger instance for all logging operations
         """
@@ -70,8 +68,8 @@ class MarkovChain:
         self.transitions = defaultdict(lambda: defaultdict(int))
         self.total_counts = defaultdict(int)
         self.using_db = False
-        self.conn_pool = None
         self.environment = environment
+        self.db_adapter = None
 
         # Ensure logger is provided
         if logger is None:
@@ -98,198 +96,47 @@ class MarkovChain:
             }
         })
 
-        # Load database configuration if not provided
-        if db_config is None:
-            db_config = self._load_db_config()
-
-        # Initialize database connection if config is available
-        if db_config:
-            try:
-                self.conn_pool = pool.SimpleConnectionPool(
-                    1,
-                    10,  # min and max connections
-                    host=db_config.get("host", "localhost"),
-                    port=db_config.get("port", 5432),
-                    dbname=db_config.get("dbname", "markov_chain"),
-                    user=db_config.get("user", "postgres"),
-                    password=db_config.get("password", ""),
+        # Initialize database adapter
+        try:
+            # Initialize the database adapter without passing db_config
+            # Let the adapter handle loading the configuration
+            if db_config is not None:
+                self.db_adapter = MarkovChainPostgreSqlAdapter(
+                    environment=environment,
+                    logger=logger,
+                    db_config=db_config
                 )
-                # Test connection
-                conn = self._get_connection()
-                self._setup_database(conn)
-                self._return_connection(conn)
+            else:
+                self.db_adapter = MarkovChainPostgreSqlAdapter(
+                    environment=environment,
+                    logger=logger
+                )
 
-                # Log successful database connection
-                self.logger.info("Database connection established", extra={
+            # Check if the adapter is usable
+            if self.db_adapter and self.db_adapter.is_usable():
+                self.using_db = True
+                self.logger.info("Database adapter initialized and ready to use", extra={
                     "metrics": {
-                        "host": db_config.get("host", "localhost"),
-                        "port": db_config.get("port", 5432),
-                        "dbname": db_config.get("dbname", "markov_chain"),
                         "environment": self.environment,
                     }
                 })
-            except Exception as e:
-                self.logger.warning("Database connection failed", extra={
+            else:
+                self.logger.warning("Database adapter not usable, using in-memory storage", extra={
                     "metrics": {
-                        "error": str(e),
+                        "reason": "adapter not usable",
                         "fallback": "in-memory storage"
                     }
                 })
-
-    def _load_db_config(self):
-        """
-        Load database configuration from file.
-
-        Returns:
-            dict: Database configuration or None if not found
-        """
-        # Base config paths
-        project_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..")
-        )
-        config_dir = os.path.join(project_root, "configs")
-
-        # Try to get environment-specific configuration first
-        env_config_paths = [
-            os.path.join(config_dir, f"database_{self.environment}.yaml"),
-        ]
-
-        # Fallback to default configuration
-        default_config_paths = [
-            os.path.join(config_dir, "database.yaml"),
-        ]
-
-        # First check environment-specific configs
-        for config_path in env_config_paths:
-            if os.path.exists(config_path):
-                try:
-                    with open(config_path, "r") as f:
-                        config = yaml.safe_load(f)
-
-                        # Log config loading
-                        self.logger.info("Database config loaded", extra={
-                            "metrics": {
-                                "config_path": config_path,
-                                "environment": self.environment,
-                            }
-                        })
-                        return config
-                except Exception as e:
-                    self.logger.warning(
-                        f"Error loading database config from {config_path}: {e}"
-                    )
-
-        # Then check default configs if environment-specific ones not found
-        for config_path in default_config_paths:
-            if os.path.exists(config_path):
-                try:
-                    with open(config_path, "r") as f:
-                        config = yaml.safe_load(f)
-
-                        # Log config loading
-                        self.logger.info("Database config loaded (default)", extra={
-                            "metrics": {
-                                "config_path": config_path,
-                                "environment": self.environment,
-                            }
-                        })
-                        return config
-                except Exception as e:
-                    self.logger.warning(
-                        f"Error loading database config from {config_path}: {e}"
-                    )
-
-        # Log no config found
-        self.logger.warning("No database configuration found", extra={
-            "metrics": {"environment": self.environment}
-        })
-        return None
-
-    def _get_connection(self):
-        """Get a connection from the pool"""
-        if self.conn_pool:
-            return self.conn_pool.getconn()
-        return None
-
-    def _return_connection(self, conn):
-        """Return a connection to the pool"""
-        if self.conn_pool:
-            self.conn_pool.putconn(conn)
-
-    def _setup_database(self, conn):
-        """Set up the necessary database tables and indexes"""
-        if not conn:
-            return
-
-        # Add environment suffix to table names to separate test and dev data
-        table_prefix = f"markov_{self.environment}"
-
-        try:
-            # First check if the database schema exists
-            with conn.cursor() as cur:
-                # Check if the transitions table exists
-                cur.execute(
-                    """
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = %s
-                    )
-                """,
-                    (f"{table_prefix}_transitions",),
-                )
-
-                table_exists = cur.fetchone()[0]
-
-                if not table_exists:
-                    self.logger.info(
-                        f"Creating database schema for {self.environment} environment"
-                    )
-                else:
-                    self.logger.info(
-                        f"Database schema for {self.environment} environment already exists"
-                    )
-
-                # Create transitions table
-                cur.execute(
-                    f"""
-                    CREATE TABLE IF NOT EXISTS {table_prefix}_transitions (
-                        state TEXT,
-                        next_word TEXT,
-                        count INTEGER,
-                        n_gram INTEGER,
-                        PRIMARY KEY (state, next_word, n_gram)
-                    )
-                """
-                )
-
-                # Create indexes
-                cur.execute(
-                    f"""
-                    CREATE INDEX IF NOT EXISTS idx_{table_prefix}_transitions_state_ngram 
-                    ON {table_prefix}_transitions(state, n_gram)
-                """
-                )
-
-                # Create total counts table
-                cur.execute(
-                    f"""
-                    CREATE TABLE IF NOT EXISTS {table_prefix}_total_counts (
-                        state TEXT,
-                        count INTEGER,
-                        n_gram INTEGER,
-                        PRIMARY KEY (state, n_gram)
-                    )
-                """
-                )
-
-            conn.commit()
-            self.logger.info(
-                f"Database setup complete for {self.environment} environment")
+                self.using_db = False
 
         except Exception as e:
-            conn.rollback()
-            self.logger.error(f"Error setting up database: {e}")
-            raise
+            self.logger.warning("Database adapter initialization failed", extra={
+                "metrics": {
+                    "error": str(e),
+                    "fallback": "in-memory storage"
+                }
+            })
+            self.using_db = False
 
     def train(self, text, clear_previous=True, preprocess=True):
         """
@@ -323,7 +170,7 @@ class MarkovChain:
         # Determine storage strategy
         use_db = (
             estimated_transitions > self.memory_threshold
-        ) and self.conn_pool is not None
+        ) and self.db_adapter is not None
 
         # Log training parameters
         self.logger.info("Training started", extra={
@@ -414,8 +261,8 @@ class MarkovChain:
 
         # Clear if requested
         if clear_previous:
-            if self.using_db:
-                self._clear_db_tables()
+            if self.using_db and self.db_adapter:
+                self.db_adapter.clear_tables(self.n_gram)
                 self.logger.info("Cleared database tables for training", extra={
                     "metrics": {"environment": self.environment, "n_gram": self.n_gram}
                 })
@@ -477,9 +324,13 @@ class MarkovChain:
                     # Update model with this batch's transitions
                     for state, next_words in result["transitions"].items():
                         for next_word, count in next_words.items():
-                            if self.using_db:
-                                self._increment_db_transition(
-                                    state, next_word, count)
+                            if self.using_db and self.db_adapter:
+                                if isinstance(state, tuple):
+                                    db_state = " ".join(state)
+                                else:
+                                    db_state = str(state)
+                                self.db_adapter.increment_transition(
+                                    db_state, next_word, count, self.n_gram)
                             else:
                                 self.transitions[state][next_word] += count
                                 self.total_counts[state] += count
@@ -529,29 +380,17 @@ class MarkovChain:
         transitions_per_second = total_transitions / \
             training_time if training_time > 0 else 0
 
-        if self.using_db:
-            # Try to get count from database for final statistics
+        if self.using_db and self.db_adapter:
+            # Update total counts in database
+            self.db_adapter.update_total_counts(self.n_gram)
+
+            # Get database statistics
             try:
-                conn = self._get_connection()
-                if conn:
-                    with conn.cursor() as cur:
-                        table_prefix = f"markov_{self.environment}"
-                        cur.execute(
-                            f"SELECT COUNT(*) FROM {table_prefix}_transitions WHERE n_gram = %s",
-                            (self.n_gram,)
-                        )
-                        db_transitions = cur.fetchone()[0]
-
-                        cur.execute(
-                            f"SELECT COUNT(DISTINCT state) FROM {table_prefix}_transitions WHERE n_gram = %s",
-                            (self.n_gram,)
-                        )
-                        db_states = cur.fetchone()[0]
-
-                        total_transitions = db_transitions
-                        total_states = db_states
-
-                    self._return_connection(conn)
+                db_stats = self.db_adapter.get_model_statistics(self.n_gram)
+                if "transitions_count" in db_stats:
+                    total_transitions = db_stats["transitions_count"]
+                if "states_count" in db_stats:
+                    total_states = db_stats["states_count"]
             except Exception as e:
                 self.logger.error(f"Error getting final DB statistics: {e}")
         else:
@@ -615,12 +454,11 @@ class MarkovChain:
         })
 
     def _train_using_db(self, words, clear_previous):
-        """Train the model using PostgreSQL storage"""
-        conn = self._get_connection()
-        if not conn:
-            self.logger.warning("Database training fallback to memory", extra={
+        """Train the model using PostgreSQL storage through the adapter"""
+        if not self.db_adapter:
+            self.logger.warning("Database adapter not available, fallback to memory", extra={
                 "metrics": {
-                    "reason": "Failed to get database connection",
+                    "reason": "No database adapter",
                     "n_gram": self.n_gram,
                 }
             })
@@ -628,28 +466,10 @@ class MarkovChain:
             self._train_using_memory(words, clear_previous)
             return
 
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
         try:
             # Clear previous data if requested
             if clear_previous:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        f"""
-                        DELETE FROM {table_prefix}_transitions WHERE n_gram = %s
-                    """,
-                        (self.n_gram,),
-                    )
-                    cur.execute(
-                        f"""
-                        DELETE FROM {table_prefix}_total_counts WHERE n_gram = %s
-                    """,
-                        (self.n_gram,),
-                    )
-                conn.commit()
-
-                # Log clearing of previous data
+                self.db_adapter.clear_tables(self.n_gram)
                 self.logger.info("Cleared previous database training data", extra={
                     "metrics": {"environment": self.environment, "n_gram": self.n_gram}
                 })
@@ -668,12 +488,12 @@ class MarkovChain:
                     next_word = words[i + self.n_gram]
 
                 # Add to batch
-                transitions_batch.append(
-                    (current_state, next_word, 1, self.n_gram))
+                transitions_batch.append((current_state, next_word, 1))
 
                 # Process batch when it reaches the threshold
                 if len(transitions_batch) >= batch_size:
-                    self._insert_transitions_batch(conn, transitions_batch)
+                    self.db_adapter.insert_transitions_batch(
+                        transitions_batch, self.n_gram)
                     total_transitions += len(transitions_batch)
                     transitions_batch = []
 
@@ -689,25 +509,13 @@ class MarkovChain:
 
             # Insert any remaining transitions
             if transitions_batch:
-                self._insert_transitions_batch(conn, transitions_batch)
+                self.db_adapter.insert_transitions_batch(
+                    transitions_batch, self.n_gram)
                 total_transitions += len(transitions_batch)
 
             # Update total counts
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
-                    SELECT state, SUM(count), n_gram 
-                    FROM {table_prefix}_transitions 
-                    WHERE n_gram = %s
-                    GROUP BY state, n_gram
-                    ON CONFLICT (state, n_gram) 
-                    DO UPDATE SET count = EXCLUDED.count
-                """,
-                    (self.n_gram,),
-                )
+            self.db_adapter.update_total_counts(self.n_gram)
 
-            conn.commit()
             self.using_db = True
 
             # Log database training completion
@@ -724,8 +532,6 @@ class MarkovChain:
             self.total_counts.clear()
 
         except Exception as e:
-            conn.rollback()
-
             # Log database error
             self.logger.error("Database training error", extra={
                 "metrics": {
@@ -737,25 +543,6 @@ class MarkovChain:
             })
 
             self._train_using_memory(words, clear_previous)
-        finally:
-            self._return_connection(conn)
-
-    def _insert_transitions_batch(self, conn, batch):
-        """Insert a batch of transitions into the database"""
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
-        with conn.cursor() as cur:
-            execute_values(
-                cur,
-                f"""
-                INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram) 
-                VALUES %s
-                ON CONFLICT (state, next_word, n_gram) 
-                DO UPDATE SET count = {table_prefix}_transitions.count + EXCLUDED.count
-            """,
-                batch,
-            )
 
     def _preprocess_text(self, text):
         """
@@ -868,7 +655,7 @@ class MarkovChain:
                     return None
 
         # Choose the appropriate prediction method based on storage
-        if self.using_db:
+        if self.using_db and self.db_adapter:
             next_word = self._predict_from_db(current_state)
         else:
             next_word = self._predict_from_memory(current_state)
@@ -904,66 +691,34 @@ class MarkovChain:
         )[0]
 
     def _predict_from_db(self, current_state):
-        """Predict next word using database storage"""
-        conn = self._get_connection()
-        if not conn:
+        """Predict next word using database adapter"""
+        if not self.db_adapter:
             self.logger.warning(
-                "Failed to get database connection for prediction")
+                "Failed to use database adapter for prediction, no adapter available")
             return None
 
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
         try:
-            # Convert tuple to string for database query
+            # Convert tuple to string for database query if needed
             if isinstance(current_state, tuple):
                 db_state = " ".join(current_state)
             else:
                 db_state = str(current_state)
 
-            with conn.cursor() as cur:
-                # Get the total count for this state
-                cur.execute(
-                    f"""
-                    SELECT count FROM {table_prefix}_total_counts 
-                    WHERE state = %s AND n_gram = %s
-                """,
-                    (db_state, self.n_gram),
-                )
+            # Get all transition probabilities for this state
+            probabilities = self.db_adapter.predict_next_word(
+                db_state, self.n_gram)
+            if not probabilities:
+                return None
 
-                result = cur.fetchone()
-                if not result:
-                    return None
+            # Choose next word based on probabilities
+            next_words = list(probabilities.keys())
+            prob_values = list(probabilities.values())
 
-                total_count = result[0]
-
-                # Get all transitions with their counts
-                cur.execute(
-                    f"""
-                    SELECT next_word, count 
-                    FROM {table_prefix}_transitions
-                    WHERE state = %s AND n_gram = %s
-                """,
-                    (db_state, self.n_gram),
-                )
-
-                transitions = cur.fetchall()
-                if not transitions:
-                    return None
-
-                # Calculate probabilities
-                next_words = [word for word, _ in transitions]
-                probabilities = [
-                    count / total_count for _, count in transitions]
-
-                # Choose next word based on probabilities
-                return random.choices(next_words, weights=probabilities)[0]
+            return random.choices(next_words, weights=prob_values)[0]
 
         except Exception as e:
             self.logger.error(f"Database error during prediction: {e}")
             return None
-        finally:
-            self._return_connection(conn)
 
     def generate_text(self, start=None, max_length=100, preprocess=True):
         """
@@ -989,8 +744,8 @@ class MarkovChain:
         })
 
         # Determine if we have any transitions to work with
-        if self.using_db:
-            has_transitions = self._check_db_has_transitions()
+        if self.using_db and self.db_adapter:
+            has_transitions = self.db_adapter.has_transitions(self.n_gram)
         else:
             has_transitions = bool(self.transitions)
 
@@ -1090,39 +845,12 @@ class MarkovChain:
 
         return generated_text
 
-    def _check_db_has_transitions(self):
-        """Check if the database has any transitions for this n-gram"""
-        conn = self._get_connection()
-        if not conn:
-            return False
-
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT EXISTS(
-                        SELECT 1 FROM {table_prefix}_transitions WHERE n_gram = %s LIMIT 1
-                    )
-                """,
-                    (self.n_gram,),
-                )
-                result = cur.fetchone()
-                return result[0] if result else False
-        except Exception as e:
-            self.logger.error(f"Error checking transitions: {e}")
-            return False
-        finally:
-            self._return_connection(conn)
-
     def _get_valid_start_state(self, start):
         """Get a valid starting state, either the provided one or a random one"""
         # If start is None, choose randomly
         if start is None:
-            if self.using_db:
-                return self._get_random_db_state()
+            if self.using_db and self.db_adapter:
+                return self.db_adapter.get_random_state(self.n_gram)
             else:
                 return (
                     random.choice(list(self.transitions.keys()))
@@ -1137,8 +865,8 @@ class MarkovChain:
                 start = tuple(words[: self.n_gram])
             else:
                 # Not enough words, get a random state
-                if self.using_db:
-                    return self._get_random_db_state()
+                if self.using_db and self.db_adapter:
+                    return self.db_adapter.get_random_state(self.n_gram)
                 else:
                     return (
                         random.choice(list(self.transitions.keys()))
@@ -1147,9 +875,9 @@ class MarkovChain:
                     )
 
         # Validate that start exists in model
-        if self.using_db:
-            if not self._check_state_exists_in_db(start):
-                return self._get_random_db_state()
+        if self.using_db and self.db_adapter:
+            if not self.db_adapter.check_state_exists(start, self.n_gram):
+                return self.db_adapter.get_random_state(self.n_gram)
         else:
             if start not in self.transitions:
                 return (
@@ -1160,85 +888,11 @@ class MarkovChain:
 
         return start
 
-    def _get_random_db_state(self):
-        """Get a random state from the database"""
-        conn = self._get_connection()
-        if not conn:
-            return None
-
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT state FROM {table_prefix}_transitions
-                    WHERE n_gram = %s
-                    GROUP BY state
-                    ORDER BY RANDOM()
-                    LIMIT 1
-                """,
-                    (self.n_gram,),
-                )
-                result = cur.fetchone()
-
-                if not result:
-                    return None
-
-                state = result[0]
-
-                # Convert to tuple if n_gram > 1
-                if self.n_gram > 1:
-                    return tuple(state.split())
-                return state
-
-        except Exception as e:
-            self.logger.error(f"Error getting random state: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
-
-    def _check_state_exists_in_db(self, state):
-        """Check if the state exists in the database"""
-        conn = self._get_connection()
-        if not conn:
-            return False
-
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
-        try:
-            # Convert tuple to string for query
-            if isinstance(state, tuple):
-                db_state = " ".join(state)
-            else:
-                db_state = str(state)
-
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    SELECT EXISTS(
-                        SELECT 1 FROM {table_prefix}_transitions
-                        WHERE state = %s AND n_gram = %s
-                        LIMIT 1
-                    )
-                """,
-                    (db_state, self.n_gram),
-                )
-                result = cur.fetchone()
-                return result[0] if result else False
-        except Exception as e:
-            self.logger.error(f"Error checking state existence: {e}")
-            return False
-        finally:
-            self._return_connection(conn)
-
     def __del__(self):
         """Cleanup method to close database connections"""
-        if self.conn_pool:
+        if self.db_adapter:
             try:
-                self.conn_pool.closeall()
+                self.db_adapter.close_connections()
             except:
                 pass
 
@@ -1337,7 +991,7 @@ class MarkovChain:
                         vocab_size = weights_tensor.shape[0]
 
                         # Populate transitions and total_counts
-                        for i in range(vocab_size):
+                        for i in vocab_size:
                             if i not in idx_to_word:
                                 continue
 
@@ -1657,7 +1311,7 @@ class MarkovChain:
                     SELECT count FROM {table_prefix}_total_counts
                     WHERE state = %s AND n_gram = %s
                 """,
-                    (state, self.n_gram),
+                    (state, self.n_gram,),
                 )
 
                 result = cur.fetchone()

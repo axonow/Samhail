@@ -3,6 +3,8 @@ import random
 import time
 import uuid
 
+from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
+
 
 class MarkovChainAnalytics:
     """
@@ -31,6 +33,9 @@ class MarkovChainAnalytics:
 
         # Generate unique identifier for this analytics instance
         self.analytics_id = str(uuid.uuid4())[:8]
+
+        # Access the database adapter from the markov chain if available
+        self.db_adapter = getattr(self.markov_chain, 'db_adapter', None)
 
         # Log initialization
         self.logger.info("MarkovChainAnalytics initialized", extra={
@@ -66,105 +71,11 @@ class MarkovChainAnalytics:
             "n_gram": self.markov_chain.n_gram,
         }
 
-        if self.markov_chain.using_db:
-            conn = self.markov_chain._get_connection()
-            try:
-                with conn.cursor() as cur:
-                    # Get total number of transitions
-                    table_prefix = f"markov_{self.markov_chain.environment}"
-                    cur.execute(
-                        f"""
-                        SELECT COUNT(*) FROM {table_prefix}_transitions 
-                        WHERE n_gram = %s
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-                    stats["transitions_count"] = cur.fetchone()[0]
-
-                    # Get unique states count
-                    cur.execute(
-                        f"""
-                        SELECT COUNT(*) FROM {table_prefix}_total_counts
-                        WHERE n_gram = %s
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-                    stats["states_count"] = cur.fetchone()[0]
-
-                    # Get top 5 most common state transitions
-                    cur.execute(
-                        f"""
-                        SELECT state, next_word, count 
-                        FROM {table_prefix}_transitions
-                        WHERE n_gram = %s
-                        ORDER BY count DESC
-                        LIMIT 5
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-                    top_transitions = cur.fetchall()
-                    stats["top_transitions"] = [
-                        {"state": state, "next_word": next_word, "count": count}
-                        for state, next_word, count in top_transitions
-                    ]
-
-                    # Get vocabulary size (unique words)
-                    cur.execute(
-                        f"""
-                        SELECT COUNT(DISTINCT next_word) 
-                        FROM {table_prefix}_transitions
-                        WHERE n_gram = %s
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-                    stats["vocabulary_size"] = cur.fetchone()[0]
-
-                    # Get average transitions per state
-                    cur.execute(
-                        f"""
-                        SELECT AVG(transition_count) FROM (
-                            SELECT state, COUNT(*) as transition_count
-                            FROM {table_prefix}_transitions
-                            WHERE n_gram = %s
-                            GROUP BY state
-                        ) as state_counts
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-                    stats["avg_transitions_per_state"] = cur.fetchone()[0]
-
-                    # Get database size
-                    cur.execute(
-                        f"""
-                        SELECT pg_size_pretty(pg_total_relation_size('{table_prefix}_transitions'))
-                    """
-                    )
-                    stats["transitions_table_size"] = cur.fetchone()[0]
-
-                    # Get state distribution metrics
-                    cur.execute(
-                        f"""
-                        SELECT 
-                            MIN(count) as min_count,
-                            MAX(count) as max_count,
-                            AVG(count) as avg_count,
-                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY count) as median_count
-                        FROM {table_prefix}_total_counts
-                        WHERE n_gram = %s
-                    """,
-                        (self.markov_chain.n_gram,),
-                    )
-
-                    dist_metrics = cur.fetchone()
-                    stats["state_count_distribution"] = {
-                        "min": dist_metrics[0],
-                        "max": dist_metrics[1],
-                        "avg": dist_metrics[2],
-                        "median": dist_metrics[3],
-                    }
-
-            finally:
-                self.markov_chain._return_connection(conn)
+        if self.markov_chain.using_db and self.db_adapter:
+            # Use the database adapter to get model statistics
+            db_stats = self.db_adapter.get_model_statistics(
+                self.markov_chain.n_gram)
+            stats.update(db_stats)
         else:
             # In-memory analytics
             stats["transitions_count"] = sum(
@@ -258,9 +169,9 @@ class MarkovChainAnalytics:
         """
         start_time = time.time()
 
-        if self.markov_chain.using_db:
-            prob = self._get_db_transition_probability(
-                current_state, next_word)
+        if self.markov_chain.using_db and self.db_adapter:
+            prob = self.db_adapter.get_transition_probability(
+                current_state, next_word, self.markov_chain.n_gram)
         else:
             prob = self._get_memory_transition_probability(
                 current_state, next_word)
@@ -291,68 +202,6 @@ class MarkovChainAnalytics:
 
         # Return probability if transition exists, otherwise 0
         return next_words[next_word] / total if next_word in next_words else 0.0
-
-    def _get_db_transition_probability(self, current_state, next_word):
-        """Calculate transition probability using database storage"""
-        conn = self.markov_chain._get_connection()
-        if not conn:
-            return 0.0
-
-        table_prefix = f"markov_{self.markov_chain.environment}"
-
-        try:
-            # Convert tuple to string for database query
-            if isinstance(current_state, tuple):
-                db_state = " ".join(current_state)
-            else:
-                db_state = str(current_state)
-
-            with conn.cursor() as cur:
-                # Get the count for this specific transition
-                cur.execute(
-                    f"""
-                    SELECT count FROM {table_prefix}_transitions 
-                    WHERE state = %s AND next_word = %s AND n_gram = %s
-                """,
-                    (db_state, next_word, self.markov_chain.n_gram),
-                )
-
-                transition_result = cur.fetchone()
-                if not transition_result:
-                    return 0.0
-
-                transition_count = transition_result[0]
-
-                # Get the total count for this state
-                cur.execute(
-                    f"""
-                    SELECT count FROM {table_prefix}_total_counts 
-                    WHERE state = %s AND n_gram = %s
-                """,
-                    (db_state, self.markov_chain.n_gram),
-                )
-
-                total_result = cur.fetchone()
-                if not total_result:
-                    return 0.0
-
-                total_count = total_result[0]
-
-                # Calculate probability
-                return transition_count / total_count
-
-        except Exception as e:
-            self.logger.error(f"Error calculating transition probability: {e}", extra={
-                "metrics": {
-                    "error_type": type(e).__name__,
-                    "error_message": str(e)
-                },
-                "model_id": self.analytics_id,
-                "operation": "get_db_transition_probability",
-            })
-            return 0.0
-        finally:
-            self.markov_chain._return_connection(conn)
 
     def score_sequence(self, sequence, preprocess=True):
         """
@@ -581,8 +430,9 @@ class MarkovChainAnalytics:
             "operation": "find_sequences_start",
         })
 
-        if self.markov_chain.using_db:
-            results = self._find_high_probability_sequences_db(length, top_n)
+        if self.markov_chain.using_db and self.db_adapter:
+            results = self.db_adapter.find_high_probability_sequences(
+                self.markov_chain.n_gram, length, top_n)
         else:
             results = self._find_high_probability_sequences_memory(
                 length, top_n)
@@ -728,143 +578,6 @@ class MarkovChainAnalytics:
                         )
 
                     sequences_checked += 1
-
-        # Sort by probability (descending) and take top_n
-        top_sequences = sorted(sequences_found, key=lambda x: x[1], reverse=True)[
-            :top_n
-        ]
-
-        return top_sequences
-
-    def _find_high_probability_sequences_db(self, length=3, top_n=10):
-        """
-        Find high probability sequences in database-stored Markov Chain model.
-
-        Args:
-            length (int): The length of sequences to find
-            top_n (int): Number of top sequences to return
-
-        Returns:
-            list: Top sequences with their probabilities
-        """
-        # Track progress metrics
-        start_time = time.time()
-        sequences_checked = 0
-        sequences_found = []
-
-        conn = self.markov_chain._get_connection()
-        try:
-            table_prefix = f"markov_{self.markov_chain.environment}"
-
-            with conn.cursor() as cur:
-                # Get sample of states to use as starting points
-                cur.execute(
-                    f"""
-                    SELECT state 
-                    FROM {table_prefix}_total_counts
-                    WHERE n_gram = %s
-                    ORDER BY count DESC
-                    LIMIT 100
-                """,
-                    (self.markov_chain.n_gram,),
-                )
-
-                start_states = [row[0] for row in cur.fetchall()]
-
-                # For each starting state, find sequences by following transitions
-                for db_state in start_states:
-                    # Convert string state to appropriate format
-                    if self.markov_chain.n_gram > 1:
-                        start_state = tuple(db_state.split())
-                    else:
-                        start_state = db_state
-
-                    # Try to build sequences starting from this state
-                    current_state = start_state
-
-                    for _ in range(
-                        min(top_n, 10)
-                    ):  # Sample some sequences from each start state
-                        if self.markov_chain.n_gram == 1:
-                            sequence = [current_state]
-                        else:
-                            sequence = list(current_state)
-
-                        current_probability = 1.0
-
-                        # Build a sequence of required length
-                        for _ in range(length - len(sequence)):
-                            # Get possible next words and their probabilities
-                            if self.markov_chain.n_gram > 1:
-                                db_current_state = " ".join(current_state)
-                            else:
-                                db_current_state = current_state
-
-                            cur.execute(
-                                f"""
-                                SELECT next_word, count 
-                                FROM {table_prefix}_transitions
-                                WHERE state = %s AND n_gram = %s
-                                ORDER BY count DESC
-                                LIMIT 10
-                            """,
-                                (db_current_state, self.markov_chain.n_gram),
-                            )
-
-                            next_words = cur.fetchall()
-                            if not next_words:
-                                break
-
-                            # Get total count for current state
-                            cur.execute(
-                                f"""
-                                SELECT count 
-                                FROM {table_prefix}_total_counts
-                                WHERE state = %s AND n_gram = %s
-                            """,
-                                (db_current_state, self.markov_chain.n_gram),
-                            )
-
-                            total_result = cur.fetchone()
-                            if not total_result:
-                                break
-
-                            total = total_result[0]
-
-                            # Calculate probabilities and choose next word
-                            next_word_probs = [
-                                count / total for _, count in next_words]
-                            next_word_idx = self._weighted_choice(
-                                next_word_probs)
-
-                            if next_word_idx is None:
-                                break
-
-                            next_word, count = next_words[next_word_idx]
-                            transition_prob = count / total
-
-                            sequence.append(next_word)
-                            current_probability *= transition_prob
-
-                            # Update current state by shifting words for n-gram
-                            if self.markov_chain.n_gram > 1:
-                                if len(sequence) >= self.markov_chain.n_gram:
-                                    current_state = tuple(
-                                        sequence[-(self.markov_chain.n_gram):]
-                                    )
-                            else:
-                                current_state = next_word
-
-                        # If we successfully built a sequence of required length
-                        if len(sequence) >= length:
-                            sequences_found.append(
-                                (" ".join(sequence), current_probability)
-                            )
-
-                        sequences_checked += 1
-
-        finally:
-            self.markov_chain._return_connection(conn)
 
         # Sort by probability (descending) and take top_n
         top_sequences = sorted(sequences_found, key=lambda x: x[1], reverse=True)[
