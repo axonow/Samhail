@@ -63,7 +63,8 @@ def test_read_pd_csv(mocker, markov_chain):
     assert result == "Hello world\nThis is a test"
 
     # Empty CSV file
-    mocker.patch("pandas.read_csv", return_value=pd.DataFrame(columns=["column1"]))
+    mocker.patch("pandas.read_csv",
+                 return_value=pd.DataFrame(columns=["column1"]))
     result = markov_chain._read_pd_csv("dummy_path.csv")
     assert result == ""
 
@@ -99,7 +100,8 @@ def test_train_model(mocker, markov_chain):
     )
 
     # Train the model with mock CSV paths
-    trained_model = markov_chain._train_model(csv_file_paths=["dummy_path.csv"])
+    trained_model = markov_chain._train_model(
+        csv_file_paths=["dummy_path.csv"])
     assert "Hello" in trained_model.graph
     assert trained_model.graph["Hello"] == ["world", "again"]
 
@@ -120,7 +122,8 @@ def test_predict_next(mocker):
     # Mock the MarkovChain methods
     mock_chain = MarkovChain()
     mocker.patch.object(mock_chain, "_train_model", return_value=mock_chain)
-    mocker.patch.object(mock_chain, "_generate", return_value="Hello world again")
+    mocker.patch.object(mock_chain, "_generate",
+                        return_value="Hello world again")
 
     # Mock the MarkovChain class to return the mocked instance
     mocker.patch(

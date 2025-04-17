@@ -46,7 +46,8 @@ sequences = []
 # Convert each sentence into a sequence of numerical indices
 # For each sentence, generate input-output pairs using a sliding window approach.
 for sentence in sentences:
-    tokens = tokenizer.texts_to_sequences([sentence])[0]  # Convert words to indices
+    tokens = tokenizer.texts_to_sequences(
+        [sentence])[0]  # Convert words to indices
     for i in range(1, len(tokens)):
         # Append sequences up to the current word
         sequences.append(tokens[: i + 1])
@@ -110,7 +111,8 @@ model = Sequential(
 # - Loss Function: Categorical crossentropy for multi-class classification.
 # - Optimizer: Adam optimizer for adaptive learning rate optimization.
 # - Metrics: Accuracy to monitor the training performance.
-model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+model.compile(loss="categorical_crossentropy",
+              optimizer="adam", metrics=["accuracy"])
 
 # -------------------------------
 # Train the Model
@@ -151,8 +153,9 @@ def predict_next_word(model, tokenizer, text, max_length):
     # Tokenize the input text and pad the sequence
     sequence = tokenizer.texts_to_sequences([text])[0]
     # Ensure the sequence length is within the limit
-    sequence = sequence[-(max_length - 1) :]
-    padded_sequence = np.pad(sequence, (max_length - len(sequence), 0), mode="constant")
+    sequence = sequence[-(max_length - 1):]
+    padded_sequence = np.pad(
+        sequence, (max_length - len(sequence), 0), mode="constant")
 
     # Perform inference with the LSTM model
     prediction = model.predict(np.array([padded_sequence]))

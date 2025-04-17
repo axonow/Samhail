@@ -1,0 +1,7 @@
+host: localhost
+port: 5432
+dbname: markov_chain
+user: postgres
+password: your_password
+application_name: samhail_markov_chain
+connect_timeout: 10

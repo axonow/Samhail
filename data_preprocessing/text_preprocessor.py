@@ -270,7 +270,6 @@ nltk.download("averaged_perceptron_tagger")
 nltk.download("averaged_perceptron_tagger_eng")
 nltk.download("omw-1.4")  # For WordNet synonyms
 
-
 class TextPreprocessor:
     def __init__(self, language="english"):
         """

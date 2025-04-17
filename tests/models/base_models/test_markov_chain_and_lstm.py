@@ -45,7 +45,8 @@ def test_encoded_sequences():
         ["the", "cat", "sat"],
         ["the", "dog", "barked"],
     ]
-    encoded_sequences = [[word_to_index[word] for word in seq] for seq in sequences]
+    encoded_sequences = [[word_to_index[word]
+                          for word in seq] for seq in sequences]
 
     # Assert that the sequences are correctly encoded
     for seq, encoded_seq in zip(sequences, encoded_sequences):
@@ -62,7 +63,8 @@ def test_padding_sequences():
     """
     sequences = [[1], [1, 2], [1, 2, 3]]
     max_length = 5
-    padded_sequences = pad_sequences(sequences, maxlen=max_length, padding="pre")
+    padded_sequences = pad_sequences(
+        sequences, maxlen=max_length, padding="pre")
 
     # Assert that all sequences are padded correctly
     assert padded_sequences.shape == (3, max_length)
@@ -112,7 +114,8 @@ def test_predict_next_word(mock_predict):
         - The function returns the correct predicted word based on the mocked probabilities and index_to_word mapping.
     """
     # Mock the predict method
-    mock_predict.return_value = np.array([[0.1, 0.2, 0.7]])  # Simulated probabilities
+    mock_predict.return_value = np.array(
+        [[0.1, 0.2, 0.7]])  # Simulated probabilities
 
     # Mock the index_to_word mapping
     # Ensure index 2 maps to "beautiful"

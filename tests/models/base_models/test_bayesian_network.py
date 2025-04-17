@@ -42,7 +42,8 @@ def test_bayesian_network_cpds():
 
     # Test the 'Subject' CPD
     assert cpds["Subject"].variable_card == 2
-    assert np.array_equal(cpds["Subject"].values, [0.5, 0.5])  # Compare to a 1D array
+    assert np.array_equal(cpds["Subject"].values, [
+                          0.5, 0.5])  # Compare to a 1D array
 
     # Test the 'Action' CPD
     assert cpds["Action"].variable_card == 2
@@ -61,11 +62,13 @@ def test_bayesian_network_inference():
         - The most probable 'Location' is correctly inferred given evidence for 'Subject'.
     """
     # Test inference for 'Subject' = 'Cat'
-    result = inference.map_query(variables=["Location"], evidence={"Subject": "Cat"})
+    result = inference.map_query(
+        variables=["Location"], evidence={"Subject": "Cat"})
     assert result["Location"] == "On the Mat"
 
     # Test inference for 'Subject' = 'Dog'
-    result = inference.map_query(variables=["Location"], evidence={"Subject": "Dog"})
+    result = inference.map_query(
+        variables=["Location"], evidence={"Subject": "Dog"})
     assert result["Location"] == "In the Park"
 
 

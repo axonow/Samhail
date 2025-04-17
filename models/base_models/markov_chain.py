@@ -60,7 +60,8 @@ class MarkovChain:
 
         next_words = self.transitions[current_word]
         total = self.total_counts[current_word]
-        probabilities = {word: count / total for word, count in next_words.items()}
+        probabilities = {word: count / total for word,
+                         count in next_words.items()}
 
         return random.choices(
             list(probabilities.keys()), weights=probabilities.values()

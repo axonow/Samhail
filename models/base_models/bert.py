@@ -81,7 +81,8 @@ def predict_next_word_bert(input_text, top_k=5):
     top_k_indices = torch.topk(mask_token_logits, top_k).indices.tolist()
 
     # Decode the predicted token IDs to words
-    predicted_words = [tokenizer.decode([idx]).strip() for idx in top_k_indices]
+    predicted_words = [tokenizer.decode([idx]).strip()
+                       for idx in top_k_indices]
 
     return predicted_words
 

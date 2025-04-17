@@ -1,5 +1,6 @@
 absl-py==2.2.2
 annotated-types==0.7.0
+anyio==4.9.0
 appnope==0.1.4
 astroid==3.3.9
 asttokens==3.0.0
@@ -14,6 +15,7 @@ certifi==2025.1.31
 charset-normalizer==3.4.1
 click==8.1.8
 cloudpathlib==0.21.0
+coloredlogs==15.0.1
 comm==0.2.2
 confection==0.1.5
 coverage==7.8.0
@@ -21,6 +23,7 @@ cymem==2.0.11
 debugpy==1.8.13
 decorator==5.2.1
 dill==0.3.9
+distro==1.9.0
 emoji==2.14.1
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85
 executing==2.2.0
@@ -30,8 +33,12 @@ fsspec==2025.3.2
 gast==0.6.0
 google-pasta==0.2.0
 grpcio==1.71.0
+h11==0.14.0
 h5py==3.13.0
+httpcore==1.0.8
+httpx==0.28.1
 huggingface-hub==0.30.1
+humanfriendly==10.0
 idna==3.10
 iniconfig==2.1.0
 ipykernel==6.29.5
@@ -40,6 +47,7 @@ ipython_pygments_lexers==1.1.1
 isort==6.0.1
 jedi==0.19.2
 Jinja2==3.1.6
+jiter==0.9.0
 joblib==1.4.2
 jupyter_client==8.6.3
 jupyter_core==5.7.2
@@ -64,6 +72,9 @@ nest-asyncio==1.6.0
 networkx==3.4.2
 nltk==3.9.1
 numpy==1.26.4
+onnx==1.17.0
+onnxruntime==1.21.0
+openai==1.55.3
 opt_einsum==3.4.0
 optree==0.14.1
 packaging==24.2
@@ -81,6 +92,8 @@ preshed==3.0.9
 prompt_toolkit==3.0.50
 protobuf==4.25.6
 psutil==7.0.0
+psycopg2==2.9.10
+psycopg2-binary==2.9.10
 ptyprocess==0.7.0
 pure_eval==0.2.3
 pybadges==3.0.1
@@ -105,10 +118,12 @@ rich==14.0.0
 safetensors==0.5.3
 scikit-learn==1.6.1
 scipy==1.15.2
+session_info==1.0.1
 setuptools==78.1.0
 shellingham==1.5.4
 six==1.17.0
 smart-open==7.1.0
+sniffio==1.3.1
 soupsieve==2.6
 spacy==3.8.5
 spacy-legacy==3.0.12
@@ -116,6 +131,7 @@ spacy-loggers==1.0.5
 srsly==2.5.1
 stack-data==0.6.3
 statsmodels==0.14.4
+stdlib-list==0.11.1
 stevedore==5.4.1
 sympy==1.13.3
 tensorboard==2.16.2
@@ -124,6 +140,7 @@ tensorflow==2.16.2
 termcolor==3.0.1
 thinc==8.3.4
 threadpoolctl==3.6.0
+tiktoken==0.9.0
 tokenizers==0.21.1
 tomlkit==0.13.2
 torch==2.2.2

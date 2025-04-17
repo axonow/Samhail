@@ -50,7 +50,8 @@ def test_predict_next_word(mock_model, mock_tokenizer):
 
     # Assert that the function returns the expected predicted word
     assert result == "word4"  # Expected predicted word
-    mock_tokenizer.texts_to_sequences.assert_called_once_with(["The cat sat on"])
+    mock_tokenizer.texts_to_sequences.assert_called_once_with(
+        ["The cat sat on"])
     mock_model.predict.assert_called_once()
 
 
@@ -66,7 +67,8 @@ def test_predict_next_word_no_prediction():
 
     # Mock the tokenizer's behavior
     tokenizer = MagicMock()
-    tokenizer.texts_to_sequences.return_value = [[1, 2, 3]]  # Simulated tokenized input
+    tokenizer.texts_to_sequences.return_value = [
+        [1, 2, 3]]  # Simulated tokenized input
     tokenizer.word_index = {
         "word1": 1,
         "word2": 2,
@@ -79,7 +81,8 @@ def test_predict_next_word_no_prediction():
     model.predict.return_value = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     # Call the function with a sample input
-    result = predict_next_word(model, tokenizer, "The cat sat on", max_length=5)
+    result = predict_next_word(
+        model, tokenizer, "The cat sat on", max_length=5)
 
     # Assert that the function returns `None`
     assert result is None
@@ -98,7 +101,8 @@ def test_padding_sequences():
 
     sequences = [[1], [1, 2], [1, 2, 3]]
     max_length = 5
-    padded_sequences = pad_sequences(sequences, maxlen=max_length, padding="pre")
+    padded_sequences = pad_sequences(
+        sequences, maxlen=max_length, padding="pre")
 
     # Assert that all sequences are padded correctly
     assert padded_sequences.shape == (3, max_length)

@@ -117,7 +117,8 @@ class MarkovChain:
             - It does not handle special cases like non-ASCII characters or text with mixed encodings.
         """
         # Remove punctuation and numeric characters
-        text = "".join(char for char in text if char.isalpha() or char.isspace())
+        text = "".join(char for char in text if char.isalpha()
+                       or char.isspace())
         # Split into words and filter out empty strings
         tokens = [word for word in text.split() if word]
         return tokens
@@ -208,9 +209,12 @@ class MarkovChain:
 
     # Define constants for CSV file paths
     CSV_FILE_PATHS = [
-        os.path.join(BASE_DIR, "csv_datasets", "markov_chain_impression_dataset.csv"),
-        os.path.join(BASE_DIR, "csv_datasets", "reddit_social_media_comments.csv"),
-        os.path.join(BASE_DIR, "csv_datasets", "twitter_social_media_comments.csv"),
+        os.path.join(BASE_DIR, "csv_datasets",
+                     "markov_chain_impression_dataset.csv"),
+        os.path.join(BASE_DIR, "csv_datasets",
+                     "reddit_social_media_comments.csv"),
+        os.path.join(BASE_DIR, "csv_datasets",
+                     "twitter_social_media_comments.csv"),
         os.path.join(BASE_DIR, "csv_datasets", "imdb_movie_reviews.csv"),
         os.path.join(BASE_DIR, "csv_datasets", "dcat_train_data.csv"),
     ]

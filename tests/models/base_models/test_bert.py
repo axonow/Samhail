@@ -15,10 +15,12 @@ def test_predict_next_word_bert_valid_input(mock_model, mock_tokenizer):
     mock_tokenizer.return_tensors = "pt"
     mock_tokenizer.mask_token_id = 103
     mock_tokenizer.mask_token = "[MASK]"
-    mock_tokenizer.return_value = {"input_ids": torch.tensor([[101, 2009, 2001, 103]])}
+    mock_tokenizer.return_value = {
+        "input_ids": torch.tensor([[101, 2009, 2001, 103]])}
     # Update the decode method to return the correct format
     mock_tokenizer.decode.side_effect = lambda token_id: (
-        f"word{token_id[0]}" if isinstance(token_id, list) else f"word{token_id}"
+        f"word{token_id[0]}" if isinstance(
+            token_id, list) else f"word{token_id}"
     )
 
     # Mock the model's behavior
@@ -51,11 +53,13 @@ def test_predict_next_word_bert_top_k_exceeds_logits(mock_model, mock_tokenizer)
     Test the `predict_next_word_bert` function when `top_k` exceeds the number of logits.
     """
     # Mock the tokenizer's behavior
-    mock_tokenizer.return_value = {"input_ids": torch.tensor([[101, 2009, 2001, 103]])}
+    mock_tokenizer.return_value = {
+        "input_ids": torch.tensor([[101, 2009, 2001, 103]])}
     mock_tokenizer.mask_token_id = 103
     # Fix the decode method to return the correct format
     mock_tokenizer.decode.side_effect = lambda token_id: (
-        f"word{token_id}" if isinstance(token_id, int) else f"word{token_id[0]}"
+        f"word{token_id}" if isinstance(
+            token_id, int) else f"word{token_id[0]}"
     )
 
     # Mock the model's behavior
