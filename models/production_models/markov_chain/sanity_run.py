@@ -1,7 +1,7 @@
 # Example usage for text generation
-from models.production_models.markov_chain.analytics import MarkovChainAnalytics
-from models.production_models.markov_chain.markov_chain import MarkovChain
 from utils.loggers.json_logger import get_logger
+from models.production_models.markov_chain.markov_chain import MarkovChain
+from models.production_models.markov_chain.analytics import MarkovChainAnalytics
 import os
 import sys
 import datetime

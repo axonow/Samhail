@@ -1605,62 +1605,73 @@ class MarkovChain:
 
     def _extract_db_vocabulary_and_transitions(self):
         """Extract vocabulary and transitions from database"""
-        conn = self._get_connection()
-        if not conn:
+        if not self.db_adapter:
             self.logger.error(
-                "Failed to get database connection for ONNX export")
+                "Failed to get database adapter for ONNX export")
             return set(), {}
-
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
 
         try:
             vocab = set()
             transitions = {}
 
-            with conn.cursor() as cur:
-                # Get all transitions
-                cur.execute(
-                    f"""
-                    SELECT state, next_word, count 
-                    FROM {table_prefix}_transitions
-                    WHERE n_gram = %s
-                """,
-                    (self.n_gram,),
-                )
+            # Use the adapter to get a connection
+            conn = self.db_adapter.get_connection()
+            if not conn:
+                self.logger.error(
+                    "Failed to get database connection for vocabulary extraction")
+                return set(), {}
 
-                for state, next_word, count in cur.fetchall():
-                    # Add words to vocabulary
-                    if self.n_gram == 1:
-                        vocab.add(state)
-                    else:
-                        for word in state.split():
-                            vocab.add(word)
+            try:
+                # Add environment suffix to table names
+                table_prefix = f"markov_{self.environment}"
 
-                    vocab.add(next_word)
+                with conn.cursor() as cur:
+                    # Get all transitions
+                    cur.execute(
+                        f"""
+                        SELECT state, next_word, count 
+                        FROM {table_prefix}_transitions
+                        WHERE n_gram = %s
+                    """,
+                        (self.n_gram,),
+                    )
 
-                    # Store transition probability
-                    transitions[(state, next_word)] = count
+                    for state, next_word, count in cur.fetchall():
+                        # Add words to vocabulary
+                        if self.n_gram == 1:
+                            vocab.add(state)
+                        else:
+                            for word in state.split():
+                                vocab.add(word)
 
-            return vocab, transitions
+                        vocab.add(next_word)
 
+                        # Store transition probability
+                        transitions[(state, next_word)] = count
+
+                return vocab, transitions
+            finally:
+                # Return the connection when done
+                self.db_adapter.return_connection(conn)
         except Exception as e:
             self.logger.error(
                 f"Database error during vocabulary extraction: {e}")
             return set(), {}
-        finally:
-            self._return_connection(conn)
 
     def _get_db_total_for_state(self, state):
         """Get total count for a state from database"""
-        conn = self._get_connection()
+        if not self.db_adapter:
+            return 0
+
+        # Use the adapter to get a connection
+        conn = self.db_adapter.get_connection()
         if not conn:
             return 0
 
-        # Add environment suffix to table names
-        table_prefix = f"markov_{self.environment}"
-
         try:
+            # Add environment suffix to table names
+            table_prefix = f"markov_{self.environment}"
+
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
@@ -1672,12 +1683,12 @@ class MarkovChain:
 
                 result = cur.fetchone()
                 return result[0] if result else 0
-
         except Exception as e:
             self.logger.error(f"Database error getting total count: {e}")
             return 0
         finally:
-            self._return_connection(conn)
+            # Return the connection when done
+            self.db_adapter.return_connection(conn)
 
     def _store_model_in_db(self, transitions, total_counts):
         """
@@ -1687,12 +1698,13 @@ class MarkovChain:
             transitions: Dictionary of transitions to store
             total_counts: Dictionary of total counts to store
         """
-        if not self.conn_pool:
+        if not self.db_adapter:
             self.logger.warning(
-                "No database connection available, keeping model in memory")
+                "No database adapter available, keeping model in memory")
             return False
 
-        conn = self._get_connection()
+        # Use the adapter to get a connection
+        conn = self.db_adapter.get_connection()
         if not conn:
             self.logger.warning(
                 "Failed to get database connection, keeping model in memory")
@@ -1718,7 +1730,7 @@ class MarkovChain:
                 )
 
             # Prepare data for batch insertion
-            transitions_data = []
+            transitions_batch = []
             total_counts_data = []
 
             # Process transitions
@@ -1735,13 +1747,13 @@ class MarkovChain:
 
                 # Add transitions
                 for next_word, count in next_words.items():
-                    transitions_data.append(
+                    transitions_batch.append(
                         (db_state, next_word, count, self.n_gram))
 
             # Insert transitions in batches
             batch_size = 1000
-            for i in range(0, len(transitions_data), batch_size):
-                batch = transitions_data[i:i+batch_size]
+            for i in range(0, len(transitions_batch), batch_size):
+                batch = transitions_batch[i:i+batch_size]
 
                 with conn.cursor() as cur:
                     execute_values(
@@ -1780,8 +1792,9 @@ class MarkovChain:
 
         except Exception as e:
             self.logger.error(f"Error storing model in database: {e}")
-            conn.rollback()
+            if conn:
+                conn.rollback()
             return False
-
         finally:
-            self._return_connection(conn)
+            # Return the connection when done
+            self.db_adapter.return_connection(conn)
