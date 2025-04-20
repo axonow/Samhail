@@ -14,9 +14,7 @@ while allowing the Markov Chain model to focus on its core functionality.
 """
 
 import os
-import sys
 import yaml
-import logging
 from psycopg2 import pool
 from psycopg2.extras import execute_values
 

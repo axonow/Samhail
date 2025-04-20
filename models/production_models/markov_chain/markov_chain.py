@@ -633,18 +633,42 @@ class MarkovChain:
 
             return text
 
-    def predict(self, current_state, preprocess=True):
+    def predict(self, current_state, preprocess=True, temperature=1.0, top_k=None, top_p=None, 
+                repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0, 
+                avoid_words=None, generation_context=None):
         """
         Predicts the next word based on the current state using learned probabilities.
 
         Args:
             current_state: The current state (word or tuple of words) for prediction.
             preprocess (bool): Whether to preprocess the input state
+            temperature (float): Controls randomness in word selection. Higher values (e.g., 1.5) increase randomness
+                                while lower values (e.g., 0.5) make the model more deterministic.
+                                Default: 1.0 (standard probability distribution)
+            top_k (int, optional): If set, only sample from the top k most likely next words.
+                                   Default: None (use all possible transitions)
+            top_p (float, optional): If set, sample from the smallest set of words whose cumulative probability
+                                     exceeds top_p. Range: [0.0, 1.0]
+                                     Default: None (use all possible transitions)
+            repetition_penalty (float): Penalize words that have already appeared. Values > 1.0 reduce
+                                        repetition, while values < 1.0 encourage it.
+                                        Default: 1.0 (no penalty)
+            presence_penalty (float): Penalty for specific words being present at all in the generated text.
+                                      Higher values make these words less likely.
+                                      Default: 0.0 (no penalty)
+            frequency_penalty (float): Penalty for words based on their frequency in the generated text.
+                                       Higher values discourage frequent words more strongly.
+                                       Default: 0.0 (no penalty)
+            avoid_words (list, optional): List of words to avoid in generation
+                                          Default: None
+            generation_context (dict, optional): Context from the generation process, including generated words
+                                                 and their frequencies for penalties
+                                                 Default: None
 
         Returns:
             str or None: The predicted next word, or None if the current state is not in the model.
         """
-        # Log prediction attempt
+        # Log prediction attempt with control parameters
         self.logger.info("Prediction attempt", extra={
             "metrics": {
                 "current_state": (
@@ -655,6 +679,13 @@ class MarkovChain:
                 "n_gram": self.n_gram,
                 "storage": "database" if self.using_db else "memory",
                 "preprocess": preprocess,
+                "temperature": temperature,
+                "top_k": top_k,
+                "top_p": top_p,
+                "repetition_penalty": repetition_penalty,
+                "presence_penalty": presence_penalty,
+                "frequency_penalty": frequency_penalty,
+                "avoid_words_count": len(avoid_words) if avoid_words else 0
             }
         })
 
@@ -680,9 +711,13 @@ class MarkovChain:
 
         # Choose the appropriate prediction method based on storage
         if self.using_db and self.db_adapter:
-            next_word = self._predict_from_db(current_state)
+            next_word = self._predict_from_db(current_state, temperature, top_k, top_p, 
+                                             repetition_penalty, presence_penalty, frequency_penalty,
+                                             avoid_words, generation_context)
         else:
-            next_word = self._predict_from_memory(current_state)
+            next_word = self._predict_from_memory(current_state, temperature, top_k, top_p, 
+                                                 repetition_penalty, presence_penalty, frequency_penalty,
+                                                 avoid_words, generation_context)
 
         # Log prediction result
         self.logger.info("Prediction result", extra={
@@ -695,27 +730,171 @@ class MarkovChain:
                 "next_word": next_word if next_word is not None else "None",
                 "success": next_word is not None,
                 "storage": "database" if self.using_db else "memory",
+                "temperature": temperature,
+                "top_k": top_k,
+                "top_p": top_p,
+                "repetition_penalty": repetition_penalty
             }
         })
 
         return next_word
 
-    def _predict_from_memory(self, current_state):
-        """Predict next word using in-memory storage"""
+    def _predict_from_memory(self, current_state, temperature=1.0, top_k=None, top_p=None, 
+                            repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0,
+                            avoid_words=None, generation_context=None):
+        """
+        Predict next word using in-memory storage with control parameters.
+        
+        Args:
+            current_state: The current state (word or tuple)
+            temperature: Controls randomness
+            top_k: Limit selection to top k most likely words
+            top_p: Nucleus sampling threshold
+            repetition_penalty: Penalty for repeated words
+            presence_penalty: Penalty for specific words being present
+            frequency_penalty: Penalty based on word frequency
+            avoid_words: List of words to avoid
+            generation_context: Context from generation process for penalties
+            
+        Returns:
+            str or None: The predicted next word
+        """
         if current_state not in self.transitions:
             return None
 
         next_words = self.transitions[current_state]
         total = self.total_counts[current_state]
-        probabilities = {word: count / total for word,
-                         count in next_words.items()}
+        
+        # Get initial probabilities
+        probabilities = {word: count / total for word, count in next_words.items()}
+        
+        # Avoid specific words if requested
+        if avoid_words:
+            for word in avoid_words:
+                if word in probabilities:
+                    probabilities[word] = 0.0
+                    
+        # Apply generation context penalties if provided
+        if generation_context and isinstance(generation_context, dict):
+            generated_words = generation_context.get('generated_words', [])
+            word_frequencies = generation_context.get('word_frequencies', {})
+            
+            # Apply repetition penalty
+            if repetition_penalty != 1.0:
+                for word in probabilities:
+                    if word in generated_words:
+                        # Penalize words that have already appeared
+                        # For repetition_penalty > 1.0, this reduces probability
+                        # For repetition_penalty < 1.0, this increases probability (encourages repetition)
+                        probabilities[word] /= repetition_penalty
+                        
+            # Apply frequency penalty
+            if frequency_penalty != 0.0:
+                for word in probabilities:
+                    frequency = word_frequencies.get(word, 0)
+                    if frequency > 0:
+                        # Stronger penalty for more frequent words
+                        probabilities[word] -= frequency_penalty * frequency / len(generated_words) if generated_words else 0
+                        
+            # Apply presence penalty
+            if presence_penalty != 0.0:
+                for word in probabilities:
+                    if word in word_frequencies:
+                        # Fixed penalty just for being present
+                        probabilities[word] -= presence_penalty
+                
+        # Ensure no negative probabilities
+        probabilities = {word: max(0.0, prob) for word, prob in probabilities.items()}
+        
+        # Check if we have any valid options left
+        if not any(probabilities.values()):
+            return None
+            
+        # Apply temperature
+        if temperature != 1.0:
+            # For temperature < 1.0: Make distribution more peaked (lower entropy)
+            # For temperature > 1.0: Make distribution more uniform (higher entropy)
+            probabilities = {
+                word: (prob ** (1.0 / temperature)) 
+                for word, prob in probabilities.items() if prob > 0
+            }
+            
+        # Normalize probabilities after transformations
+        total_prob = sum(probabilities.values())
+        if total_prob > 0:
+            probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
+        else:
+            return None
+            
+        # Apply top-k filtering
+        if top_k is not None and top_k > 0:
+            # Keep only top k items by probability
+            sorted_words = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+            top_k_words = sorted_words[:top_k]
+            probabilities = dict(top_k_words)
+            
+            # Re-normalize probabilities
+            total_prob = sum(probabilities.values())
+            if total_prob > 0:
+                probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
+                
+        # Apply nucleus (top-p) sampling
+        if top_p is not None and 0.0 < top_p < 1.0:
+            # Sort words by probability
+            sorted_words = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+            
+            # Find the smallest set of words that exceed the cumulative probability threshold
+            cumulative_prob = 0.0
+            nucleus_words = []
+            
+            for word, prob in sorted_words:
+                nucleus_words.append((word, prob))
+                cumulative_prob += prob
+                if cumulative_prob >= top_p:
+                    break
+                    
+            # Update probabilities
+            probabilities = dict(nucleus_words)
+            
+            # Re-normalize probabilities
+            total_prob = sum(probabilities.values())
+            if total_prob > 0:
+                probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
+        
+        # Sample from final distribution
+        words = list(probabilities.keys())
+        probs = list(probabilities.values())
+        
+        if not words:
+            return None
+            
+        try:
+            return random.choices(words, weights=probs)[0]
+        except ValueError:
+            # Fallback if weights are invalid
+            self.logger.warning("Invalid probability distribution, using uniform selection")
+            return random.choice(words)
 
-        return random.choices(
-            list(probabilities.keys()), weights=probabilities.values()
-        )[0]
-
-    def _predict_from_db(self, current_state):
-        """Predict next word using database adapter"""
+    def _predict_from_db(self, current_state, temperature=1.0, top_k=None, top_p=None, 
+                        repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0,
+                        avoid_words=None, generation_context=None):
+        """
+        Predict next word using database with control parameters.
+        
+        Args:
+            current_state: The current state (word or tuple)
+            temperature: Controls randomness
+            top_k: Limit selection to top k most likely words
+            top_p: Nucleus sampling threshold
+            repetition_penalty: Penalty for repeated words
+            presence_penalty: Penalty for specific words being present
+            frequency_penalty: Penalty based on word frequency
+            avoid_words: List of words to avoid
+            generation_context: Context from generation process for penalties
+            
+        Returns:
+            str or None: The predicted next word
+        """
         if not self.db_adapter:
             self.logger.warning(
                 "Failed to use database adapter for prediction, no adapter available")
@@ -733,30 +912,132 @@ class MarkovChain:
                 db_state, self.n_gram)
             if not probabilities:
                 return None
+                
+            # Apply control parameters
+            # Avoid specific words if requested
+            if avoid_words:
+                for word in avoid_words:
+                    if word in probabilities:
+                        probabilities[word] = 0.0
+                        
+            # Apply generation context penalties if provided
+            if generation_context and isinstance(generation_context, dict):
+                generated_words = generation_context.get('generated_words', [])
+                word_frequencies = generation_context.get('word_frequencies', {})
+                
+                # Apply repetition penalty
+                if repetition_penalty != 1.0:
+                    for word in probabilities:
+                        if word in generated_words:
+                            probabilities[word] /= repetition_penalty
+                            
+                # Apply frequency penalty
+                if frequency_penalty != 0.0:
+                    for word in probabilities:
+                        frequency = word_frequencies.get(word, 0)
+                        if frequency > 0:
+                            probabilities[word] -= frequency_penalty * frequency / len(generated_words) if generated_words else 0
+                            
+                # Apply presence penalty
+                if presence_penalty != 0.0:
+                    for word in probabilities:
+                        if word in word_frequencies:
+                            probabilities[word] -= presence_penalty
+                    
+            # Ensure no negative probabilities
+            probabilities = {word: max(0.0, prob) for word, prob in probabilities.items()}
+            
+            # Check if we have any valid options left
+            if not any(probabilities.values()):
+                return None
+                
+            # Apply temperature
+            if temperature != 1.0:
+                probabilities = {
+                    word: (prob ** (1.0 / temperature)) 
+                    for word, prob in probabilities.items() if prob > 0
+                }
+                
+            # Normalize probabilities after transformations
+            total_prob = sum(probabilities.values())
+            if total_prob > 0:
+                probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
+            else:
+                return None
+                
+            # Apply top-k filtering
+            if top_k is not None and top_k > 0:
+                sorted_words = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+                top_k_words = sorted_words[:top_k]
+                probabilities = dict(top_k_words)
+                
+                # Re-normalize probabilities
+                total_prob = sum(probabilities.values())
+                if total_prob > 0:
+                    probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
+                    
+            # Apply nucleus (top-p) sampling
+            if top_p is not None and 0.0 < top_p < 1.0:
+                sorted_words = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+                
+                cumulative_prob = 0.0
+                nucleus_words = []
+                
+                for word, prob in sorted_words:
+                    nucleus_words.append((word, prob))
+                    cumulative_prob += prob
+                    if cumulative_prob >= top_p:
+                        break
+                        
+                probabilities = dict(nucleus_words)
+                
+                # Re-normalize probabilities
+                total_prob = sum(probabilities.values())
+                if total_prob > 0:
+                    probabilities = {word: prob / total_prob for word, prob in probabilities.items()}
 
             # Choose next word based on probabilities
             next_words = list(probabilities.keys())
             prob_values = list(probabilities.values())
-
-            return random.choices(next_words, weights=prob_values)[0]
+            
+            if not next_words:
+                return None
+                
+            try:
+                return random.choices(next_words, weights=prob_values)[0]
+            except ValueError:
+                # Fallback if weights are invalid
+                self.logger.warning("Invalid probability distribution, using uniform selection")
+                return random.choice(next_words)
 
         except Exception as e:
             self.logger.error(f"Database error during prediction: {e}")
             return None
 
-    def generate_text(self, start=None, max_length=100, preprocess=True):
+    def generate_text(self, start=None, max_length=100, preprocess=True, 
+                     temperature=1.0, top_k=None, top_p=None, repetition_penalty=1.0,
+                     presence_penalty=0.0, frequency_penalty=0.0, avoid_words=None):
         """
-        Generates text starting from a given state.
+        Generates text starting from a given state with control parameters.
 
         Args:
             start: Starting state (word or tuple). If None, a random state is chosen.
             max_length (int): Maximum number of words to generate.
-            preprocess (bool): Whether to preprocess the starting state
+            preprocess (bool): Whether to preprocess the starting state.
+            temperature (float): Controls randomness. Higher values (e.g., 1.5) increase randomness,
+                                lower values (e.g., 0.5) make generation more deterministic.
+            top_k (int, optional): If set, only sample from top k most probable words.
+            top_p (float, optional): If set, sample from smallest set of words whose cumulative 
+                                    probability exceeds top_p (nucleus sampling).
+            repetition_penalty (float): Penalty for repeated words. Values > 1.0 discourage repetition.
+            presence_penalty (float): Penalty for specific words appearing at all.
+            frequency_penalty (float): Penalty based on word frequency in generated text.
+            avoid_words (list, optional): List of words to avoid in generation.
 
         Returns:
             str: Generated text.
         """
-        # Log generation start
+        # Log generation start with control parameters
         self.logger.info("Text generation started", extra={
             "metrics": {
                 "start": str(start) if start else "random",
@@ -764,6 +1045,13 @@ class MarkovChain:
                 "n_gram": self.n_gram,
                 "storage": "database" if self.using_db else "memory",
                 "preprocess": preprocess,
+                "temperature": temperature,
+                "top_k": top_k,
+                "top_p": top_p,
+                "repetition_penalty": repetition_penalty,
+                "presence_penalty": presence_penalty,
+                "frequency_penalty": frequency_penalty,
+                "avoid_words_count": len(avoid_words) if avoid_words else 0
             }
         })
 
@@ -807,11 +1095,27 @@ class MarkovChain:
             self.n_gram if isinstance(current_state, tuple) else 1
         )
 
+        # Initialize generation context to track generated words for penalties
+        generation_context = {
+            'generated_words': text.copy(),  # Start with the initial words
+            'word_frequencies': {word: 1 for word in text}
+        }
+
         # Generate remaining words
         for i in range(remaining):
             next_word = self.predict(
-                current_state, preprocess=False
-            )  # Already preprocessed
+                current_state, 
+                preprocess=False,  # Already preprocessed
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+                presence_penalty=presence_penalty,
+                frequency_penalty=frequency_penalty,
+                avoid_words=avoid_words,
+                generation_context=generation_context
+            )
+            
             if next_word is None:
                 # Log early termination
                 self.logger.info("Text generation ended early - no prediction available", extra={
@@ -827,6 +1131,10 @@ class MarkovChain:
                 break
 
             text.append(next_word)
+            
+            # Update generation context
+            generation_context['generated_words'].append(next_word)
+            generation_context['word_frequencies'][next_word] = generation_context['word_frequencies'].get(next_word, 0) + 1
 
             # Update current state for n-grams
             if self.n_gram > 1:
@@ -864,6 +1172,11 @@ class MarkovChain:
                 "start": str(start) if start else "random",
                 "words_generated": len(text),
                 "storage": "PostgreSQL" if self.using_db else "memory",
+                "temperature": temperature,
+                "top_k": top_k,
+                "top_p": top_p,
+                "repetition_penalty": repetition_penalty,
+                "unique_words_ratio": len(set(text)) / len(text) if text else 0
             }
         })
 
