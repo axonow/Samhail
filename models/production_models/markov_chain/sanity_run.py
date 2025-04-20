@@ -1,4 +1,7 @@
 # Example usage for text generation
+from models.production_models.markov_chain.analytics import MarkovChainAnalytics
+from models.production_models.markov_chain.markov_chain import MarkovChain
+from utils.loggers.json_logger import get_logger
 import os
 import sys
 import datetime
@@ -12,9 +15,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Now import modules after Python path is set up
-from utils.loggers.json_logger import get_logger
-from models.production_models.markov_chain.markov_chain import MarkovChain
-from models.production_models.markov_chain.analytics import MarkovChainAnalytics
+
 
 class MarkovChainSanityRun:
     """
@@ -128,10 +129,11 @@ class MarkovChainSanityRun:
         })
 
         print("\033[1mExample usage with various control parameters\033[0m\n")
-        
+
         # Create a markov chain model with a longer training text for better demonstration
-        markov_chain = MarkovChain(n_gram=2, memory_threshold=10000, environment="test", logger=self.logger)
-        
+        markov_chain = MarkovChain(
+            n_gram=2, memory_threshold=10000, environment="test", logger=self.logger)
+
         # Longer training text for more interesting results
         training_text = """
         It was a bright cold day in April, and the clocks were striking thirteen. Winston Smith, 
@@ -142,64 +144,66 @@ class MarkovChainSanityRun:
         to the wall. It depicted simply an enormous face, more than a meter wide: the face of a 
         man of about forty-five, with a heavy black mustache and ruggedly handsome features.
         """
-        
+
         markov_chain.train(training_text)
-        
+
         # Example 1: Default parameters (temperature=1.0)
         print("\033[1;34mText generation with default parameters:\033[0m")
-        default_text = markov_chain.generate_text(start="It was", max_length=30)
+        default_text = markov_chain.generate_text(
+            start="It was", max_length=30)
         print(f"\033[1m{default_text}\033[0m\n")
-        
+
         # Example 2: High temperature (more random)
         print("\033[1;34mText generation with high temperature (1.5):\033[0m")
         high_temp_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             temperature=1.5
         )
         print(f"\033[1m{high_temp_text}\033[0m\n")
-        
+
         # Example 3: Low temperature (more deterministic)
         print("\033[1;34mText generation with low temperature (0.5):\033[0m")
         low_temp_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             temperature=0.5
         )
         print(f"\033[1m{low_temp_text}\033[0m\n")
-        
+
         # Example 4: Using top_k sampling
         print("\033[1;34mText generation with top_k=2 sampling:\033[0m")
         top_k_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             top_k=2
         )
         print(f"\033[1m{top_k_text}\033[0m\n")
-        
+
         # Example 5: Using top_p (nucleus) sampling
         print("\033[1;34mText generation with top_p=0.7 (nucleus) sampling:\033[0m")
         top_p_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             top_p=0.7
         )
         print(f"\033[1m{top_p_text}\033[0m\n")
-        
+
         # Example 6: Using repetition penalty
         print("\033[1;34mText generation with repetition penalty=1.5:\033[0m")
         rep_penalty_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             repetition_penalty=1.5
         )
         print(f"\033[1m{rep_penalty_text}\033[0m\n")
-        
+
         # Example 7: Combining parameters
-        print("\033[1;34mText generation with combined parameters (temp=0.8, top_k=3, repetition_penalty=1.2):\033[0m")
+        print(
+            "\033[1;34mText generation with combined parameters (temp=0.8, top_k=3, repetition_penalty=1.2):\033[0m")
         combined_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             temperature=0.8,
             top_k=3,
             repetition_penalty=1.2
@@ -209,14 +213,14 @@ class MarkovChainSanityRun:
         # Example 8: Using frequency penalty
         print("\033[1;34mText generation with frequency penalty=0.5:\033[0m")
         freq_penalty_text = markov_chain.generate_text(
-            start="It was", 
-            max_length=30, 
+            start="It was",
+            max_length=30,
             frequency_penalty=0.5
         )
         print(f"\033[1m{freq_penalty_text}\033[0m\n")
-        
+
         execution_time = time.time() - start_time
-        
+
         # Log completion of control parameters examples
         self.logger.info("Control parameters examples completed", extra={
             "metrics": {
@@ -232,7 +236,7 @@ class MarkovChainSanityRun:
                 "run_id": self.run_id
             }
         })
-        
+
         # Return the generated texts as a dictionary
         return {
             "default": default_text,
