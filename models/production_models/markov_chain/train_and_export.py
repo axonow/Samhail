@@ -19,8 +19,6 @@ Dependencies:
     - Database configuration from configs/database.yaml
 """
 
-from utils.loggers.json_logger import get_logger
-from models.production_models.markov_chain.markov_chain import MarkovChain
 import os
 import sys
 import json
@@ -36,7 +34,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Now import modules after Python path is set up
-
+from models.production_models.markov_chain.markov_chain import MarkovChain
+from utils.loggers.json_logger import get_logger
 
 class ExportMarkovChain:
     """

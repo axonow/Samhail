@@ -27,6 +27,71 @@ except ImportError as e:
     print(f"\033[1mImport error: {e}\033[0m")  # Print in bold format
     # The path might be incorrect or the module not installed
 
+# Define a standalone preprocessing function for parallel processing
+
+
+def process_text_parallel(args):
+    """
+    Process a text for parallel training.
+    This is a standalone function outside of the class to avoid pickling issues.
+
+    Args:
+        args (tuple): A tuple containing (idx, text, preprocess_flag, n_gram, preprocessor_available)
+
+    Returns:
+        dict: A dictionary with processed transitions and statistics
+    """
+    idx, text, preprocess_flag, n_gram, preprocessor_available = args
+    start_time = time.time()
+
+    # Preprocess text if requested
+    if preprocess_flag and preprocessor_available:
+        try:
+            # Simple preprocessing without using TextPreprocessor class
+            # because it can't be pickled across processes
+            # Convert to lowercase
+            text = text.lower()
+            # Handle basic whitespace
+            text = ' '.join(text.split())
+        except Exception:
+            # If preprocessing fails, continue with original text
+            pass
+
+    words = text.split()
+
+    # Extract transitions but don't update model yet - using standard dict instead of defaultdict
+    local_transitions = {}
+    for i in range(len(words) - n_gram):
+        if n_gram == 1:
+            state = words[i]
+        else:
+            state = tuple(words[i: i + n_gram])
+
+        next_word = words[i + n_gram]
+
+        # Create nested dictionary structure without using defaultdict
+        if state not in local_transitions:
+            local_transitions[state] = {}
+
+        if next_word not in local_transitions[state]:
+            local_transitions[state][next_word] = 0
+
+        local_transitions[state][next_word] += 1
+
+    # Progress info
+    processing_time = time.time() - start_time
+    transition_count = sum(len(next_words)
+                           for next_words in local_transitions.values())
+
+    return {
+        "idx": idx,
+        "transitions": local_transitions,
+        "processing_time": processing_time,
+        "word_count": len(words),
+        "transition_count": transition_count,
+        "state_count": len(local_transitions)
+    }
+
 
 class MarkovChain:
     """
@@ -200,51 +265,6 @@ class MarkovChain:
             }
         })
 
-    def _process_text_for_parallel(self, args):
-        """
-        Process a text for parallel training.
-        This method is separated from train_parallel to avoid pickling issues with nested functions.
-
-        Args:
-            args (tuple): A tuple containing (idx, text)
-
-        Returns:
-            dict: A dictionary with processed transitions and statistics
-        """
-
-        idx, text = args
-        start_time = time.time()
-
-        # Preprocess text if requested
-        if hasattr(self, 'preprocessor') and self.preprocessor:
-            text = self._preprocess_text(text)
-
-        words = text.split()
-
-        # Extract transitions but don't update model yet
-        local_transitions = defaultdict(lambda: defaultdict(int))
-        for i in range(len(words) - self.n_gram):
-            if self.n_gram == 1:
-                state = words[i]
-            else:
-                state = tuple(words[i: i + self.n_gram])
-            next_word = words[i + self.n_gram]
-            local_transitions[state][next_word] += 1
-
-        # Progress info
-        processing_time = time.time() - start_time
-        transition_count = sum(len(next_words)
-                               for next_words in local_transitions.values())
-
-        return {
-            "idx": idx,
-            "transitions": local_transitions,
-            "processing_time": processing_time,
-            "word_count": len(words),
-            "transition_count": transition_count,
-            "state_count": len(local_transitions)
-        }
-
     def train_parallel(self, texts, clear_previous=True, preprocess=True, n_jobs=-1):
         """
         Train model on multiple texts using parallel processing
@@ -308,13 +328,17 @@ class MarkovChain:
         total_states = 0
         start_time = time.time()
 
-        # Create batches for better progress tracking
-        text_batches = [(i, text) for i, text in enumerate(texts)]
+        # Create argument tuples for the standalone processing function
+        # Include necessary information without passing the whole class
+        process_args = [
+            (i, text, preprocess, self.n_gram, TEXT_PREPROCESSOR_AVAILABLE)
+            for i, text in enumerate(texts)
+        ]
 
         # Process texts in parallel with better progress reporting
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            futures = [executor.submit(
-                self._process_text_for_parallel, args) for args in text_batches]
+            futures = [executor.submit(process_text_parallel, arg)
+                       for arg in process_args]
 
             # Track and combine results as they complete
             for future in concurrent.futures.as_completed(futures):
