@@ -1,5 +1,5 @@
 import pytest
-from models.nlps.text_preprocessor import TextPreprocessor
+from data_preprocessing.text_preprocessor import TextPreprocessor
 
 
 @pytest.fixture
@@ -45,12 +45,14 @@ def test_remove_numbers(preprocessor):
 
 def test_handle_contractions(preprocessor):
     text = "I can't believe it's true."
-    assert preprocessor.handle_contractions(text) == "I cannot believe it is true."
+    assert preprocessor.handle_contractions(
+        text) == "I cannot believe it is true."
 
 
 def test_remove_special_characters(preprocessor):
     text = "Hello @world! #amazing"
-    assert preprocessor.remove_special_characters(text) == "Hello world amazing"
+    assert preprocessor.remove_special_characters(
+        text) == "Hello world amazing"
 
 
 def test_pos_tagging(preprocessor):
@@ -118,7 +120,8 @@ def test_sentence_segmentation(preprocessor):
 
 def test_handle_abbreviations(preprocessor):
     text = "u r amazing btw!"
-    assert preprocessor.handle_abbreviations(text) == "you are amazing by the way!"
+    assert preprocessor.handle_abbreviations(
+        text) == "you are amazing by the way!"
 
 
 def test_detect_language(preprocessor):
@@ -217,7 +220,8 @@ def test_get_synonyms(preprocessor):
 
 def test_normalize_social_media_text(preprocessor):
     text = "OMG!!! I soooo love this!!! #amazing @user"
-    assert preprocessor.normalize_social_media_text(text) == "OMG! I so love this!"
+    assert preprocessor.normalize_social_media_text(
+        text) == "OMG! I so love this!"
 
     # No hashtags or mentions
     text = "I love this!"

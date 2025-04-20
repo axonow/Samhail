@@ -61,7 +61,8 @@ def test_padding_sequences():
         - All sequences are padded to the same length.
     """
     sequences = [[1], [1, 2], [1, 2, 3]]
-    padded_sequences = pad_sequences(sequences, maxlen=max_length, padding="pre")
+    padded_sequences = pad_sequences(
+        sequences, maxlen=max_length, padding="pre")
 
     # Assert that all sequences are padded correctly
     assert padded_sequences.shape == (3, max_length)
@@ -103,7 +104,8 @@ def test_predict_next_word(mock_predict):
         - The function returns the correct predicted word.
     """
     # Mock the predict method
-    mock_predict.return_value = np.array([[0.1, 0.2, 0.7]])  # Simulated probabilities
+    mock_predict.return_value = np.array(
+        [[0.1, 0.2, 0.7]])  # Simulated probabilities
 
     # Mock the tokenizer
     mock_tokenizer = MagicMock()
@@ -111,7 +113,8 @@ def test_predict_next_word(mock_predict):
         [1, 2, 3, 4]
     ]  # Simulated tokenized input
     # Mocked word-to-index mapping
-    mock_tokenizer.word_index = {"the": 1, "cat": 2, "sat": 3, "on": 4, "mat": 5}
+    mock_tokenizer.word_index = {
+        "the": 1, "cat": 2, "sat": 3, "on": 4, "mat": 5}
 
     # Dynamically determine the expected word based on the mocked probabilities
     # Add 1 because word_index is 1-based
@@ -121,7 +124,8 @@ def test_predict_next_word(mock_predict):
     ]  # Reverse mapping
 
     # Call the function with a sample input
-    result = predict_next_word(model, mock_tokenizer, "The cat sat on", max_length=5)
+    result = predict_next_word(
+        model, mock_tokenizer, "The cat sat on", max_length=5)
 
     # Assert that the function returns the correct predicted word
     assert result == expected_word  # Dynamically assert the expected word

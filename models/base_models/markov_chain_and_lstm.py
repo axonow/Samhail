@@ -35,7 +35,8 @@ index_to_word = {i: word for word, i in word_to_index.items()}
 
 # Encode the sequences into integer representations using word_to_index.
 # Each word in a sequence is replaced with its corresponding integer index.
-encoded_sequences = [[word_to_index[word] for word in seq] for seq in sequences]
+encoded_sequences = [[word_to_index[word]
+                      for word in seq] for seq in sequences]
 
 # Prepare input-output pairs for training using a sliding window approach
 # X: Input sequences (up to the current word).
@@ -151,7 +152,8 @@ def predict_next_word(input_text, model, tokenizer, index_to_word, max_length):
     sequence = tokenizer.texts_to_sequences([input_text])[0]
 
     # Pad the sequence to the required length
-    padded_sequence = pad_sequences([sequence], maxlen=max_length, padding="pre")
+    padded_sequence = pad_sequences(
+        [sequence], maxlen=max_length, padding="pre")
 
     # Perform inference with the model
     prediction = model.predict(padded_sequence)

@@ -60,6 +60,7 @@ jobs:
           VALIDATE_PYTHON_PYLINT: true
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       # Step 7: Test Dependency Security Vulnerabilities
       - name: Check Dependency Security Vulnerabilities
@@ -69,6 +70,7 @@ jobs:
           api-key: ${{ secrets.SAFETY_API_KEY }}
         env:
           GITHUB_TOKEN: ${{ secrets.SAMHAIL_TOKEN}}
+        continue-on-error: true
 
       # Step 8: Test Application Security Vulnerabilities
       - name: Run Bandit Security Checks

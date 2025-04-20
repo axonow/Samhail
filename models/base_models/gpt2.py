@@ -63,7 +63,8 @@ def predict_next_word(text, top_k=5):
     top_k_tokens = torch.topk(probabilities, top_k)
 
     # Decode the token IDs back into words
-    next_words = [tokenizer.decode([token]) for token in top_k_tokens.indices[0]]
+    next_words = [tokenizer.decode([token])
+                  for token in top_k_tokens.indices[0]]
 
     return next_words
 

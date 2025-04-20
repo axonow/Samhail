@@ -27,7 +27,8 @@ def test_predict_next_word(mock_model, mock_tokenizer):
     """
     # Mock the tokenizer's behavior
     mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
-    mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
+    mock_tokenizer.return_value = {"input_ids": [
+        1, 2, 3]}  # Simulated tokenized input
     # Simulate decoding behavior for token IDs
     mock_tokenizer.decode.side_effect = lambda token_id: (
         f"word{int(token_id[0])}"
@@ -48,7 +49,8 @@ def test_predict_next_word(mock_model, mock_tokenizer):
     # Assert that the function returns the expected top-k predictions
     assert result == ["word4", "word3", "word2"]  # Expected decoded words
     # Ensure tokenizer is called correctly
-    mock_tokenizer.assert_called_once_with("The cat sat on the", return_tensors="pt")
+    mock_tokenizer.assert_called_once_with(
+        "The cat sat on the", return_tensors="pt")
     mock_model.assert_called_once()  # Ensure the model is called once
 
 
@@ -83,7 +85,8 @@ def test_predict_next_word_top_k(mock_model, mock_tokenizer):
     """
     # Mock the tokenizer's behavior
     mock_tokenizer.return_tensors = "pt"  # Simulate the tokenizer's return type
-    mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}  # Simulated tokenized input
+    mock_tokenizer.return_value = {"input_ids": [
+        1, 2, 3]}  # Simulated tokenized input
     # Simulate decoding behavior for token IDs
     mock_tokenizer.decode.side_effect = lambda token_id: (
         f"word{int(token_id[0])}"
