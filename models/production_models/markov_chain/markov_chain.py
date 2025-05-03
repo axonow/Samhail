@@ -1111,7 +1111,6 @@ class MarkovChain:
             # Create a new model instance
             model = cls(
                 n_gram=n_gram,
-                memory_threshold=memory_threshold,
                 db_config=db_config,
                 environment=environment,
                 logger=logger
@@ -1121,11 +1120,6 @@ class MarkovChain:
             session_options = ort.SessionOptions()
             session = ort.InferenceSession(
                 filepath, sess_options=session_options)
-
-            # Get the transition matrix
-            # Extract model inputs and outputs
-            input_name = session.get_inputs()[0].name
-            output_name = session.get_outputs()[0].name
 
             # Get model weights (transition matrix) - depends on ONNX model structure
             # This assumes the exported model has weights stored in a node named 'transition_matrix'
