@@ -81,7 +81,7 @@ jobs:
       # Step 9: Run Unit Tests and Generate Coverage Report
       - name: Run Unit Tests
         run: |
-          python -m pytest --cov=models/ --cov-report=xml
+          python -m pytest --cov=models/ --cov=utils/ --cov-report=xml
 
       # Step 10: Upload coverage reports to Codecov
       - name: Upload coverage reports to Codecov

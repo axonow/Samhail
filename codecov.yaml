@@ -1,0 +1,23 @@
+comment:
+  layout: "header, diff, flags, components"  # show component info in the PR comment
+  
+component_management:
+  default_rules:  # default rules that will be inherited by all components
+    statuses:
+      - type: Samhail # in this case every component that doens't have a status defined will have a project type one
+        target: auto
+        branches:
+          - "!main"
+  individual_components:
+    - component_id: production_models  # this is an identifier that should not be changed
+      name: Production Models  # this is a display name, and can be changed freely
+      paths:
+        - models/production_models/**
+    - component_id: utils
+      name: Utilities
+      paths:
+        - utils/**
+    - component_id: base_models
+      name: Base Models
+      paths:
+        - models/base_models/**
