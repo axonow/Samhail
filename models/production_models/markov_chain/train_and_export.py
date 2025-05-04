@@ -22,10 +22,10 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Import project modules
-from utils.system_monitoring import ResourceMonitor
-from utils.loggers.json_logger import get_logger
-from data_preprocessing.text_preprocessor import TextPreprocessor
 from models.production_models.markov_chain.markov_chain import MarkovChain
+from data_preprocessing.text_preprocessor import TextPreprocessor
+from utils.loggers.json_logger import get_logger
+from utils.system_monitoring import ResourceMonitor
 
 class MarkovChainTrainer:
     """

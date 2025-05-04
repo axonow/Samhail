@@ -536,6 +536,7 @@ class MarkovChain:
                 "metrics": {"text_sample": text[:50] + ("..." if len(text) > 50 else "")}
             })
             return text
+
         try:
             self.logger.info("Text normalization started", extra={
                 "metrics": {
@@ -544,17 +545,15 @@ class MarkovChain:
                 }
             })
 
-            preprocessor = TextPreprocessor()
-
             # Apply comprehensive normalization pipeline
-            text = preprocessor.to_lowercase(text)
-            text = preprocessor.handle_contractions(text)
-            text = preprocessor.normalize(text)
-            text = preprocessor.normalize_social_media_text(text)
-            text = preprocessor.handle_emojis(text)
-            text = preprocessor.handle_urls(text)
-            text = preprocessor.remove_html_tags(text)
-            text = preprocessor.handle_whitespace(text)
+            text = self.preprocessor.to_lowercase(text)
+            text = self.preprocessor.handle_contractions(text)
+            text = self.preprocessor.normalize(text)
+            text = self.preprocessor.normalize_social_media_text(text)
+            text = self.preprocessor.handle_emojis(text)
+            text = self.preprocessor.handle_urls(text)
+            text = self.preprocessor.remove_html_tags(text)
+            text = self.preprocessor.handle_whitespace(text)
 
             # Log normalization result
             self.logger.info("Text normalization completed", extra={
@@ -572,6 +571,7 @@ class MarkovChain:
                 "metrics": {"error": str(e), "error_type": type(e).__name__}
             })
 
+            # Return the original text unchanged
             return text
 
     def predict(self, current_state, preprocess=True, temperature=1.0, top_k=None, top_p=None,
@@ -1047,10 +1047,11 @@ class MarkovChain:
 
     def __del__(self):
         """Cleanup method to close database connections"""
-        if self.db_adapter:
+        if hasattr(self, 'db_adapter') and self.db_adapter:
             try:
                 self.db_adapter.close_connections()
-            except:
+            except Exception:
+                # Silent exception handling in destructor
                 pass
 
     def save_model(self, filepath):
@@ -1116,96 +1117,69 @@ class MarkovChain:
                 logger=logger
             )
 
-            # Create an ONNX Runtime session to access the model
-            session_options = ort.SessionOptions()
-            session = ort.InferenceSession(
-                filepath, sess_options=session_options)
+            # Flag that we're doing an in-memory model initially
+            model.using_db = False
 
-            # Get model weights (transition matrix) - depends on ONNX model structure
-            # This assumes the exported model has weights stored in a node named 'transition_matrix'
+            # Set up default transitions and counts
+            transitions = defaultdict(lambda: defaultdict(int))
+            total_counts = defaultdict(int)
+
+            # Extract weights from ONNX model
+            weights_tensor = None
+
+            # Search for the transition matrix in the ONNX model
             for node in onnx_model.graph.node:
-                if (node.op_type == 'Constant' and len(node.output) > 0 and
-                        node.output[0] == 'matrix'):
-                    # Extract the weights tensor
-                    weights_tensor = None
+                if node.op_type == 'Constant' and len(node.output) > 0 and node.output[0] == 'matrix':
                     for attr in node.attribute:
                         if attr.name == 'value':
                             weights_tensor = onnx.numpy_helper.to_array(attr.t)
                             break
 
-                    if weights_tensor is not None:
-                        # Convert matrix to dictionary format
-                        transitions = defaultdict(lambda: defaultdict(int))
-                        total_counts = defaultdict(int)
+            if weights_tensor is not None:
+                # Process transition matrix
+                vocab_size = weights_tensor.shape[0]
 
-                        # Get vocabulary size
-                        vocab_size = weights_tensor.shape[0]
+                # Convert weights to transitions dictionary
+                for i in range(vocab_size):
+                    if str(i) not in vocab_mapping:
+                        continue
 
-                        # Populate transitions and total_counts
-                        for i in vocab_size:
-                            if i not in idx_to_word:
-                                continue
+                    state = vocab_mapping[str(i)]
+                    state_vector = weights_tensor[i]
 
-                            state = idx_to_word[i]
-                            state_vector = weights_tensor[i]
+                    for j in range(vocab_size):
+                        if str(j) not in vocab_mapping or state_vector[j] <= 0:
+                            continue
 
-                            # Count total transitions for this state
-                            non_zero_transitions = np.where(
-                                state_vector > 0)[0]
-                            if len(non_zero_transitions) == 0:
-                                continue
+                        next_word = vocab_mapping[str(j)]
+                        probability = float(state_vector[j])
 
-                            # Calculate total based on probabilities
-                            # For simplicity, we'll normalize probabilities to counts
-                            # by using a base count of 100 for the most likely transition
-                            max_prob = np.max(state_vector)
-                            scaling_factor = 100 / max_prob if max_prob > 0 else 0
+                        # Convert probability to count using base of 100
+                        count = int(probability * 100)
+                        if count > 0:
+                            transitions[state][next_word] = count
+                            total_counts[state] += count
 
-                            for j in non_zero_transitions:
-                                if j not in idx_to_word:
-                                    continue
+                # Update model with transitions
+                model.transitions = transitions
+                model.total_counts = total_counts
 
-                                next_word = idx_to_word[j]
-                                probability = state_vector[j]
+                # Log successful loading
+                logger.info("ONNX model loaded successfully", extra={
+                    "metrics": {
+                        "filepath": filepath,
+                        "states_count": len(transitions),
+                        "transitions_count": sum(len(next_words) for next_words in transitions.values()),
+                        "n_gram": n_gram,
+                    }
+                })
 
-                                # Convert probability to count
-                                count = int(probability * scaling_factor)
-                                if count > 0:
-                                    transitions[state][next_word] = count
-                                    total_counts[state] += count
+                # Optionally convert to database storage if model is large
+                if db_config is not None and len(transitions) > memory_threshold:
+                    logger.info("Converting loaded model to database storage")
+                    model._store_model_in_db(transitions, total_counts)
 
-                        # Update model with the extracted transitions
-                        model.transitions = transitions
-                        model.total_counts = total_counts
-                        model.using_db = False
-
-                        # Log successful loading
-                        logger.info("ONNX model loaded successfully", extra={
-                            "metrics": {
-                                "filepath": filepath,
-                                "states_count": len(transitions),
-                                "n_gram": n_gram,
-                                "environment": environment,
-                            }
-                        })
-
-                        # Option to store in database if needed
-                        if db_config and len(transitions) > model.memory_threshold:
-                            logger.info(
-                                "Converting loaded model to database storage")
-                            model._store_model_in_db(transitions, total_counts)
-
-                        return model
-
-            # If we get here, we couldn't extract the transition matrix
-            logger.error("ONNX model loading failed", extra={
-                "metrics": {
-                    "filepath": filepath,
-                    "error": "Failed to extract transition matrix",
-                }
-            })
-
-            return None
+            return model  # Always return the model instance, even if empty
 
         except Exception as e:
             logger.error("ONNX model loading failed", extra={
@@ -1215,7 +1189,15 @@ class MarkovChain:
                     "error_type": type(e).__name__,
                 }
             })
-            return None
+
+            # Create an empty model as fallback
+            model = cls(
+                n_gram=1,
+                db_config=db_config,
+                environment=environment,
+                logger=logger
+            )
+            return model  # Return empty model instead of None on error
 
     def export_to_onnx(self, filepath):
         """
@@ -1492,6 +1474,9 @@ class MarkovChain:
         Args:
             transitions: Dictionary of transitions to store
             total_counts: Dictionary of total counts to store
+
+        Returns:
+            bool: True if successful, False otherwise
         """
         if not self.db_adapter:
             self.logger.warning(
@@ -1549,31 +1534,32 @@ class MarkovChain:
             batch_size = 1000
             for i in range(0, len(transitions_batch), batch_size):
                 batch = transitions_batch[i:i+batch_size]
-
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        f"""
-                        INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram)
-                        VALUES %s
-                    """,
-                        batch
-                    )
+                if batch:  # Only insert if there's data
+                    with conn.cursor() as cur:
+                        execute_values(
+                            cur,
+                            f"""
+                            INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram)
+                            VALUES %s
+                        """,
+                            batch
+                        )
 
             # Insert total counts in batches
             for i in range(0, len(total_counts_data), batch_size):
                 batch = total_counts_data[i:i+batch_size]
+                if batch:  # Only insert if there's data
+                    with conn.cursor() as cur:
+                        execute_values(
+                            cur,
+                            f"""
+                            INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
+                            VALUES %s
+                        """,
+                            batch
+                        )
 
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        f"""
-                        INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
-                        VALUES %s
-                    """,
-                        batch
-                    )
-
+            # Commit all changes
             conn.commit()
 
             # Update model state
@@ -1581,6 +1567,7 @@ class MarkovChain:
             self.transitions.clear()
             self.total_counts.clear()
 
+            # Log success
             self.logger.info(
                 f"Successfully stored model in {self.environment} database")
             return True
@@ -1591,8 +1578,9 @@ class MarkovChain:
                 conn.rollback()
             return False
         finally:
-            # Return the connection when done
-            self.db_adapter.return_connection(conn)
+            # Always return the connection to the pool when done
+            if conn:
+                self.db_adapter.return_connection(conn)
 
     def __getstate__(self):
         """
@@ -1616,10 +1604,22 @@ class MarkovChain:
             # Remove the adapter instance which contains the non-picklable connection
             del state['db_adapter']
 
+        # Save logger reference flag to indicate it needs to be recreated
+        if 'logger' in state:
+            # We don't pickle the logger directly, but flag its existence
+            # so we know we need to restore it
+            state['_had_logger'] = state['logger'] is not None
+            del state['logger']
+
         # Handle resource monitor which may have non-picklable elements
         if 'resource_monitor' in state:
             # No need to store this as it will be recreated
             del state['resource_monitor']
+
+        # Handle preprocessor which may have non-picklable elements
+        if 'preprocessor' in state:
+            # No need to store this as it will be recreated
+            del state['preprocessor']
 
         # Convert defaultdict with lambda to regular dictionaries for serialization
         if 'transitions' in state:
@@ -1649,6 +1649,9 @@ class MarkovChain:
         db_environment = state.pop(
             '_db_environment', None) if '_db_environment' in state else 'development'
 
+        # Extract logger flag (if it was saved)
+        had_logger = state.pop('_had_logger', True)
+
         # Convert regular dictionaries back to defaultdict with appropriate factory functions
         if 'transitions' in state:
             regular_dict = state['transitions']
@@ -1674,14 +1677,32 @@ class MarkovChain:
         # Restore the state
         self.__dict__.update(state)
 
+        # Create default logger if needed
+        if had_logger and not hasattr(self, 'logger'):
+            from utils.loggers.json_logger import get_logger
+            self.logger = get_logger(f"markov_chain_{self.environment}")
+
         # Recreate resource monitor
-        self.resource_monitor = ResourceMonitor(
-            logger=self.logger,
-            monitoring_interval=10.0
-        )
+        if not hasattr(self, 'resource_monitor') or self.resource_monitor is None:
+            from utils.system_monitoring import ResourceMonitor
+            self.resource_monitor = ResourceMonitor(
+                logger=self.logger,
+                monitoring_interval=10.0
+            )
+
+        # Recreate text preprocessor if needed
+        if not hasattr(self, 'preprocessor') or self.preprocessor is None:
+            try:
+                from data_preprocessing.text_preprocessor import TextPreprocessor
+                self.preprocessor = TextPreprocessor()
+                self.logger.info("TextPreprocessor recreated after unpickling")
+            except Exception as e:
+                self.preprocessor = None
+                self.logger.warning(
+                    f"Failed to recreate TextPreprocessor after unpickling: {str(e)}")
 
         # Recreate database adapter if needed
-        if getattr(self, 'using_db', False) and db_config:
+        if getattr(self, 'using_db', False) and db_config and not hasattr(self, 'db_adapter'):
             try:
                 from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
                 self.db_adapter = MarkovChainPostgreSqlAdapter(

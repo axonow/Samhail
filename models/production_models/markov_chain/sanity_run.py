@@ -20,9 +20,9 @@ if project_root not in sys.path:
 
 # Import project modules
 # Import the MarkovChain class directly from the same directory
-from markov_chain import MarkovChain
-from utils.system_monitoring import ResourceMonitor
 from utils.loggers.json_logger import get_logger
+from utils.system_monitoring import ResourceMonitor
+from markov_chain import MarkovChain
 
 class MarkovChainSanityChecker:
     """
