@@ -642,7 +642,7 @@ class MarkovChain:
             if self.n_gram > 1:
                 words = current_state.split()
                 if len(words) >= self.n_gram:
-                    current_state = tuple(words[-self.n_gram:])
+                    current_state = " ".join(words[-self.n_gram:])
                 else:
                     # Log insufficient words
                     self.logger.warning("Insufficient words for prediction", extra={
@@ -1677,10 +1677,10 @@ class MarkovChain:
         # Restore the state
         self.__dict__.update(state)
 
-        # Create default logger if needed
-        if had_logger and not hasattr(self, 'logger'):
-            from utils.loggers.json_logger import get_logger
-            self.logger = get_logger(f"markov_chain_{self.environment}")
+        # Create a new logger immediately to ensure it's always present
+        # This ensures the attribute exists even if logging functionality isn't needed yet
+        from utils.loggers.json_logger import get_logger
+        self.logger = get_logger(f"markov_chain_{self.environment}")
 
         # Recreate resource monitor
         if not hasattr(self, 'resource_monitor') or self.resource_monitor is None:

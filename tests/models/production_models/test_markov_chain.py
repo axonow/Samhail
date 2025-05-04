@@ -5,10 +5,6 @@ Tests for the MarkovChain model.
 This module provides comprehensive tests for the MarkovChain model,
 focusing on behavior rather than implementation details.
 """
-
-from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
-from data_preprocessing.text_preprocessor import TextPreprocessor
-from models.production_models.markov_chain.markov_chain import MarkovChain, process_text_batch
 import os
 import sys
 import json
@@ -26,7 +22,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Import the MarkovChain class and dependencies
-
+from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
+from data_preprocessing.text_preprocessor import TextPreprocessor
+from models.production_models.markov_chain.markov_chain import MarkovChain, process_text_batch
 
 # Define fixture for mock logger
 @pytest.fixture
@@ -387,28 +385,31 @@ class TestMarkovChain:
 
     def test_predict(self, markov_chain):
         """Test prediction functionality."""
-        # Reset mock to ensure clean call tracking
-        markov_chain.db_adapter.predict_next_word.reset_mock()
-
-        # Set up mock DB adapter for prediction
-        markov_chain.db_adapter.predict_next_word.return_value = {
+        # Create a fresh mock db_adapter
+        mock_db_adapter = MagicMock()
+        mock_db_adapter.predict_next_word.return_value = {
             "apple": 0.5,
             "banana": 0.3,
             "cherry": 0.2
         }
 
-        # Use the exact module path that MarkovChain uses for the random.choices function
-        with patch('models.production_models.markov_chain.markov_chain.random.choices', return_value=["apple"]):
-            # Basic prediction with direct state
-            result = markov_chain.predict(
-                "test", temperature=1.0, deterministic=False)
+        # Replace the db_adapter on the markov_chain
+        markov_chain.db_adapter = mock_db_adapter
+
+        # Important: Set n_gram=1 to avoid the multi-word requirement for the input "test"
+        # This is the key issue - with n_gram=2, "test" is insufficient for prediction
+        markov_chain.n_gram = 1
+
+        # Mock random.choices directly to ensure it returns what we need
+        with patch('random.choices', return_value=["apple"]):
+            # Call predict with a single word - this will work with n_gram=1
+            result = markov_chain.predict("test", preprocess=False)
 
             # Verify result
             assert result == "apple"
 
-            # Verify DB adapter was called correctly with exact arguments
-            markov_chain.db_adapter.predict_next_word.assert_called_with(
-                "test", 2)
+            # Verify predict_next_word was called with the correct arguments
+            mock_db_adapter.predict_next_word.assert_called_with("test", 1)
 
     def test_predict_preprocessing(self, markov_chain):
         """Test prediction with text preprocessing."""
@@ -1691,3 +1692,593 @@ def test_getstate_setstate_full_cycle(markov_chain, tmp_path):
         # Clean up (explicitly delete the file)
         if pickle_path and os.path.exists(pickle_path):
             os.unlink(pickle_path)
+
+    def test_pickle_serialization(self, markov_chain, tmp_path):
+        """Test serialization and deserialization with pickle."""
+        import pickle
+        import os
+
+        # Set up some data in the model
+        markov_chain.transitions = defaultdict(lambda: defaultdict(int))
+        markov_chain.transitions["state1"]["next1"] = 10
+        markov_chain.transitions["state2"]["next2"] = 20
+        markov_chain.total_counts["state1"] = 10
+        markov_chain.total_counts["state2"] = 20
+        markov_chain.n_gram = 2
+        markov_chain.environment = "test"
+
+        # Save for __getstate__ to use
+        markov_chain._db_config = {"host": "test_host", "database": "test_db"}
+        markov_chain._db_environment = "test"
+
+        # Get original logger
+        original_logger = markov_chain.logger
+
+        pickle_path = None
+        try:
+            # Pickle the model
+            pickle_path = tmp_path / "model.pickle"
+            with open(pickle_path, 'wb') as f:
+                pickle.dump(markov_chain, f)
+
+            # Verify pickle file exists
+            assert pickle_path.exists()
+
+            # Load the model from pickle
+            with open(pickle_path, 'rb') as f:
+                loaded_model = pickle.load(f)
+
+            # Manually set logger since it can't be pickled
+            loaded_model.logger = original_logger
+
+            # Verify core attributes are preserved
+            assert loaded_model.n_gram == 2
+            assert loaded_model.environment == "test"
+
+            # Verify transitions are preserved
+            assert loaded_model.transitions["state1"]["next1"] == 10
+            assert loaded_model.transitions["state2"]["next2"] == 20
+
+            # Verify count totals are preserved
+            assert loaded_model.total_counts["state1"] == 10
+            assert loaded_model.total_counts["state2"] == 20
+
+            # Make sure logger functions can be called
+            loaded_model.logger.info("Testing logger after deserialization")
+
+        finally:
+            # Clean up the pickle file
+            if pickle_path and os.path.exists(pickle_path):
+                os.unlink(pickle_path)
+
+    def test_export_to_onnx_memory_model(self, markov_chain, tmp_path):
+        """Test exporting model to ONNX format from memory."""
+        # Set up in-memory transitions
+        markov_chain.using_db = False
+        markov_chain.transitions = defaultdict(lambda: defaultdict(int))
+        markov_chain.transitions["state1"]["next1"] = 10
+        markov_chain.transitions["state1"]["next2"] = 5
+        markov_chain.total_counts = defaultdict(int)
+        markov_chain.total_counts["state1"] = 15
+
+        # Mock onnx operations
+        with patch('onnx.helper.make_tensor_value_info'):
+            with patch('onnx.helper.make_tensor'):
+                with patch('onnx.helper.make_node'):
+                    with patch('onnx.helper.make_graph'):
+                        with patch('onnx.helper.make_model'):
+                            with patch('onnx.checker.check_model'):
+                                with patch('onnx.save'):
+                                    # Export model
+                                    filepath = tmp_path / "test_model.onnx"
+                                    result = markov_chain.export_to_onnx(
+                                        str(filepath))
+
+                                    # Verify result
+                                    assert result is True
+
+                                    # Verify logger was called
+                                    markov_chain.logger.info.assert_called()
+
+    def test_export_to_onnx_error(self, markov_chain, tmp_path):
+        """Test handling of errors during ONNX export."""
+        # Mock onnx operations to raise an exception
+        with patch('onnx.helper.make_tensor_value_info', side_effect=Exception("ONNX error")):
+            # Export model
+            filepath = tmp_path / "test_model.onnx"
+            result = markov_chain.export_to_onnx(str(filepath))
+
+            # Verify result
+            assert result is False
+
+            # Verify error was logged
+            markov_chain.logger.error.assert_called()
+
+    def test_extract_db_vocabulary_and_transitions(self, markov_chain):
+        """Test extracting vocabulary and transitions from database."""
+        # Create proper mocks for database cursor and connection
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = [
+            ("state1", "next1", 10),
+            ("state1", "next2", 5),
+            ("state2", "next3", 8)
+        ]
+
+        # Create a proper context manager mock for cursor
+        cursor_context = MagicMock()
+        cursor_context.__enter__.return_value = cursor_mock
+
+        # Create a proper context manager mock for connection
+        conn_mock = MagicMock()
+        conn_mock.cursor.return_value = cursor_context
+
+        # Set up the connection mock on the db_adapter
+        markov_chain.db_adapter.get_connection.return_value = conn_mock
+
+        # Call the method
+        vocab, transitions = markov_chain._extract_db_vocabulary_and_transitions()
+
+        # Verify results
+        assert "state1" in vocab
+        assert "next1" in vocab
+        assert "next2" in vocab
+        assert "state2" in vocab
+        assert "next3" in vocab
+
+        assert ("state1", "next1") in transitions
+        assert transitions[("state1", "next1")] == 10
+        assert ("state1", "next2") in transitions
+        assert transitions[("state1", "next2")] == 5
+        assert ("state2", "next3") in transitions
+        assert transitions[("state2", "next3")] == 8
+
+        # Verify connection was returned
+        markov_chain.db_adapter.return_connection.assert_called_once_with(
+            conn_mock)
+
+    def test_get_db_total_for_state(self, markov_chain):
+        """Test getting total count for state from database."""
+        # Create proper mocks for database cursor and connection
+        cursor_mock = MagicMock()
+        cursor_mock.fetchone.return_value = (15,)
+
+        # Create a proper context manager mock for cursor
+        cursor_context = MagicMock()
+        cursor_context.__enter__.return_value = cursor_mock
+
+        # Create a proper context manager mock for connection
+        conn_mock = MagicMock()
+        conn_mock.cursor.return_value = cursor_context
+
+        # Set up the connection mock on the db_adapter
+        markov_chain.db_adapter.get_connection.return_value = conn_mock
+
+        # Call the method
+        result = markov_chain._get_db_total_for_state("state1")
+
+        # Verify result
+        assert result == 15
+
+        # Verify connection was returned
+        markov_chain.db_adapter.return_connection.assert_called_once_with(
+            conn_mock)
+
+    def test_process_text_batch(self):
+        """Test the standalone process_text_batch function."""
+        # Create test data
+        idx = 0
+        text = "This is a test text with multiple words for processing"
+        n_gram = 2
+
+        # Call the function
+        result = process_text_batch((idx, text, n_gram))
+
+        # Verify result structure
+        assert "transitions" in result
+        assert "processing_time" in result
+        assert "word_count" in result
+        assert "transition_count" in result
+        assert "state_count" in result
+        assert result["idx"] == idx
+
+        # Check some transitions
+        transitions = result["transitions"]
+        assert isinstance(transitions, dict)
+
+        # For n_gram=2, we expect tuples of 2 words as states
+        expected_state = ("this", "is")
+        if expected_state in transitions:
+            assert "a" in transitions[expected_state]
+
+    def test_store_model_in_db(self, markov_chain):
+        """Test storing model in database."""
+        # Create mock transitions and counts
+        transitions = {
+            "state1": {"next1": 10, "next2": 5},
+            "state2": {"next3": 8}
+        }
+        total_counts = {
+            "state1": 15,
+            "state2": 8
+        }
+
+        # Create a properly mocked connection setup
+        conn_mock = MagicMock()
+        cursor_context = MagicMock()
+        cursor_mock = MagicMock()
+        cursor_context.__enter__.return_value = cursor_mock
+        conn_mock.cursor.return_value = cursor_context
+
+        # Set up the mock DB adapter behavior
+        markov_chain.db_adapter.get_connection.return_value = conn_mock
+
+        # Mock psycopg2.extras.execute_values
+        with patch('psycopg2.extras.execute_values'):
+            # Call the method
+            result = markov_chain._store_model_in_db(transitions, total_counts)
+
+            # Verify result is True (success)
+            assert result is True
+
+            # Verify connection was committed and returned
+            conn_mock.commit.assert_called_once()
+            markov_chain.db_adapter.return_connection.assert_called_once_with(
+                conn_mock)
+
+            # Verify log was generated
+            markov_chain.logger.info.assert_any_call(
+                f"Successfully stored model in {markov_chain.environment} database"
+            )
+
+    def test_store_model_in_db_error(self, markov_chain):
+        """Test handling errors when storing model in database."""
+        # Create mock transitions and counts
+        transitions = {
+            "state1": {"next1": 10, "next2": 5}
+        }
+        total_counts = {
+            "state1": 15
+        }
+
+        # Make execute_values raise an exception
+        with patch('psycopg2.extras.execute_values', side_effect=Exception("DB error")):
+            # Create proper mocks for database cursor and connection
+            cursor_mock = MagicMock()
+
+            # Create a proper context manager mock for cursor
+            cursor_context = MagicMock()
+            cursor_context.__enter__.return_value = cursor_mock
+
+            # Create a proper context manager mock for connection with rollback
+            conn_mock = MagicMock()
+            conn_mock.cursor.return_value = cursor_context
+
+            # Set up the connection mock on db_adapter
+            markov_chain.db_adapter.get_connection.return_value = conn_mock
+
+            # Call the method
+            result = markov_chain._store_model_in_db(transitions, total_counts)
+
+            # Verify result is False (failure)
+            assert result is False
+
+            # Verify error was logged
+            markov_chain.logger.error.assert_called()
+
+            # Verify connection was rolled back and returned
+            conn_mock.rollback.assert_called_once()
+            markov_chain.db_adapter.return_connection.assert_called_once_with(
+                conn_mock)
+
+    def test_getstate(self, markov_chain):
+        """Test pickle serialization preparation."""
+        # Set up some attributes with non-picklable types
+        markov_chain.transitions = defaultdict(lambda: defaultdict(int))
+        markov_chain.transitions["state1"]["next1"] = 10
+        markov_chain.total_counts = defaultdict(int)
+        markov_chain.total_counts["state1"] = 10
+
+        # Call __getstate__
+        state = markov_chain.__getstate__()
+
+        # Verify state doesn't contain non-picklable objects
+        assert "db_adapter" not in state
+        assert "resource_monitor" not in state
+
+        # Verify defaultdicts were converted to regular dicts
+        assert isinstance(state["transitions"], dict)
+        assert isinstance(state["transitions"]["state1"], dict)
+        assert isinstance(state["total_counts"], dict)
+
+    def test_setstate(self):
+        """Test pickle deserialization restoration."""
+        # Create a state dict with regular dicts
+        state = {
+            "n_gram": 2,
+            "environment": "test",
+            "logger": MagicMock(),
+            "using_db": True,
+            "transitions": {
+                "state1": {"next1": 10, "next2": 5}
+            },
+            "total_counts": {
+                "state1": 15
+            },
+            "_db_config": {"host": "localhost"},
+            "_db_environment": "test"
+        }
+
+        # Mock the database adapter
+        with patch('utils.database_adapters.postgresql.markov_chain.MarkovChainPostgreSqlAdapter'):
+            with patch('models.production_models.markov_chain.markov_chain.ResourceMonitor'):
+                # Create a new instance
+                model = MarkovChain(
+                    n_gram=1, environment="temp", logger=MagicMock())
+
+                # Call __setstate__
+                model.__setstate__(state)
+
+                # Verify attributes were restored
+                assert model.n_gram == 2
+                assert model.environment == "test"
+
+                # Verify defaultdicts were recreated
+                assert isinstance(model.transitions, defaultdict)
+                assert model.transitions["state1"]["next1"] == 10
+                assert isinstance(model.total_counts, defaultdict)
+                assert model.total_counts["state1"] == 15
+
+    def test_load_model(self, mock_logger):
+        """Test loading model from ONNX file."""
+        # Mock onnx operations
+        with patch('onnx.load') as mock_load:
+            # Set up mock ONNX model with metadata
+            mock_model = MagicMock()
+            mock_model.metadata_props = [
+                MagicMock(key='n_gram', value='2'),
+                MagicMock(key='vocab_mapping',
+                          value='{"0": "word1", "1": "word2"}')
+            ]
+            mock_load.return_value = mock_model
+
+            # Mock model graph and node structure
+            mock_graph = MagicMock()
+            mock_model.graph = mock_graph
+            mock_node = MagicMock()
+            mock_node.op_type = "Constant"
+            mock_node.output = ["matrix"]
+            mock_attr = MagicMock()
+            mock_attr.name = "value"
+            mock_attr.t = MagicMock()
+            mock_node.attribute = [mock_attr]
+            mock_graph.node = [mock_node]
+
+            # Mock numpy helper to return proper weights tensor
+            weights = np.zeros((2, 2), dtype=np.float32)
+            weights[0, 1] = 0.7
+            weights[1, 0] = 0.3
+
+            # Explicitly define the mock instance to be returned
+            mock_instance = MagicMock(spec=MarkovChain)
+
+            # Create a comprehensive mock chain
+            with patch('onnx.numpy_helper.to_array', return_value=weights):
+                with patch('onnxruntime.SessionOptions'):
+                    with patch('onnxruntime.InferenceSession'):
+                        # Mock the constructor to return our prepared instance
+                        with patch('models.production_models.markov_chain.markov_chain.MarkovChain', return_value=mock_instance):
+                            # Call load_model
+                            result = MarkovChain.load_model(
+                                filepath="test_model.onnx",
+                                environment="test",
+                                logger=mock_logger
+                            )
+
+                            # Verify the result is our mock instance
+                            assert result is mock_instance
+
+                            # Verify logger calls
+                            mock_logger.info.assert_any_call(
+                                "ONNX model loading started", extra=ANY)
+
+    def test_del_method(self, markov_chain):
+        """Test __del__ method properly closes connections."""
+        # Call __del__
+        markov_chain.__del__()
+
+        # Verify DB adapter close_connections was called
+        markov_chain.db_adapter.close_connections.assert_called_once()
+
+    def test_del_method_with_exception(self, markov_chain):
+        """Test __del__ method handles exceptions gracefully."""
+        # Make close_connections raise an exception
+        markov_chain.db_adapter.close_connections.side_effect = Exception(
+            "Close error")
+
+        # Call __del__ - should not raise exception
+        try:
+            markov_chain.__del__()
+            # If we get here, no exception was raised
+            assert True
+        except Exception:
+            assert False, "Exception should have been caught in __del__"
+
+    def test_save_model(self, markov_chain):
+        """Test save_model method."""
+        # Mock export_to_onnx
+        with patch.object(markov_chain, 'export_to_onnx', return_value=True):
+            # Call save_model
+            result = markov_chain.save_model("test_model.onnx")
+
+            # Verify result
+            assert result is True
+
+            # Verify export_to_onnx was called
+            markov_chain.export_to_onnx.assert_called_once_with(
+                "test_model.onnx")
+
+    def test_pickle_serialization(self, markov_chain, tmp_path):
+        """Test serialization and deserialization with pickle."""
+        import pickle
+        import os
+
+        # Set up some data in the model
+        markov_chain.transitions = defaultdict(lambda: defaultdict(int))
+        markov_chain.transitions["state1"]["next1"] = 10
+        markov_chain.transitions["state2"]["next2"] = 20
+        markov_chain.total_counts["state1"] = 10
+        markov_chain.total_counts["state2"] = 20
+        markov_chain.n_gram = 2
+        markov_chain.environment = "test"
+
+        # Save for __getstate__ to use
+        markov_chain._db_config = {"host": "test_host", "database": "test_db"}
+        markov_chain._db_environment = "test"
+
+        # Get original logger
+        original_logger = markov_chain.logger
+
+        pickle_path = None
+        try:
+            # Pickle the model
+            pickle_path = tmp_path / "model.pickle"
+            with open(pickle_path, 'wb') as f:
+                pickle.dump(markov_chain, f)
+
+            # Verify pickle file exists
+            assert pickle_path.exists()
+
+            # Load the model from pickle
+            with open(pickle_path, 'rb') as f:
+                loaded_model = pickle.load(f)
+
+            # Manually set logger since it can't be pickled
+            loaded_model.logger = original_logger
+
+            # Verify core attributes are preserved
+            assert loaded_model.n_gram == 2
+            assert loaded_model.environment == "test"
+
+            # Verify transitions are preserved
+            assert loaded_model.transitions["state1"]["next1"] == 10
+            assert loaded_model.transitions["state2"]["next2"] == 20
+
+            # Verify count totals are preserved
+            assert loaded_model.total_counts["state1"] == 10
+            assert loaded_model.total_counts["state2"] == 20
+
+            # Make sure logger functions can be called
+            loaded_model.logger.info("Testing logger after deserialization")
+
+        finally:
+            # Clean up the pickle file
+            if pickle_path and os.path.exists(pickle_path):
+                os.unlink(pickle_path)
+
+    def test_export_to_onnx_db_model(self, markov_chain, tmp_path):
+        """Test exporting model to ONNX format from database."""
+        # Set up database-backed model
+        markov_chain.using_db = True
+
+        # Mock DB extraction methods
+        vocab = {"state1", "next1", "next2", "state2", "next3"}
+        transitions = {
+            ("state1", "next1"): 10,
+            ("state1", "next2"): 5,
+            ("state2", "next3"): 8
+        }
+
+        with patch.object(markov_chain, '_extract_db_vocabulary_and_transitions', return_value=(vocab, transitions)):
+            with patch.object(markov_chain, '_get_db_total_for_state', return_value=15):
+                # Mock ONNX operations
+                with patch('onnx.helper.make_tensor_value_info'):
+                    with patch('onnx.helper.make_tensor'):
+                        with patch('onnx.helper.make_node'):
+                            with patch('onnx.helper.make_graph'):
+                                with patch('onnx.helper.make_model'):
+                                    with patch('onnx.checker.check_model'):
+                                        with patch('onnx.save'):
+                                            # Export model
+                                            filepath = tmp_path / "db_model.onnx"
+                                            result = markov_chain.export_to_onnx(
+                                                str(filepath))
+
+                                            # Verify result
+                                            assert result is True
+
+                                            # Verify DB extraction method was called
+                                            markov_chain._extract_db_vocabulary_and_transitions.assert_called_once()
+
+                                            # Verify _get_db_total_for_state was called
+                                            assert markov_chain._get_db_total_for_state.called
+
+    def test_load_model_complete(self, mock_logger, tmp_path):
+        """Test complete load_model functionality with mocked ONNX model."""
+        import json
+        import numpy as np
+
+        # Create a mock ONNX model with required components
+        model_path = str(tmp_path / "test_model.onnx")
+
+        # Mock vocabulary mapping
+        vocab_mapping = {
+            "0": "word1",
+            "1": "word2",
+            "2": "word3"
+        }
+
+        # Mock metadata properties
+        metadata_props = [
+            MagicMock(key='n_gram', value='2'),
+            MagicMock(key='vocab_mapping', value=json.dumps(vocab_mapping))
+        ]
+
+        # Create mock model structure
+        mock_model = MagicMock()
+        mock_model.metadata_props = metadata_props
+
+        # Create mock graph
+        mock_graph = MagicMock()
+        mock_model.graph = mock_graph
+
+        # Create mock node with transition matrix
+        mock_node = MagicMock()
+        mock_node.op_type = "Constant"
+        mock_node.output = ["matrix"]
+
+        # Create mock attribute with tensor
+        mock_attr = MagicMock()
+        mock_attr.name = "value"
+
+        # Create weights tensor that will be converted to numpy
+        # 3x3 for vocab size 3
+        mock_weights = np.zeros((3, 3), dtype=np.float32)
+        mock_weights[0, 1] = 0.7  # word1 -> word2: 0.7 probability
+        mock_weights[0, 2] = 0.3  # word1 -> word3: 0.3 probability
+        mock_weights[1, 0] = 1.0  # word2 -> word1: 1.0 probability
+
+        # Set up mock conversion from tensor to numpy
+        with patch('onnx.numpy_helper.to_array', return_value=mock_weights):
+            mock_attr.t = "mock_tensor"
+            mock_node.attribute = [mock_attr]
+            mock_graph.node = [mock_node]
+
+        # Mock ONNX load
+        with patch('onnx.load', return_value=mock_model):
+            # Mock ONNX runtime session
+            with patch('onnxruntime.SessionOptions'):
+                with patch('onnxruntime.InferenceSession'):
+                    # Mock MarkovChain initialization
+                    with patch('models.production_models.markov_chain.markov_chain.MarkovChainPostgreSqlAdapter'):
+                        with patch('models.production_models.markov_chain.markov_chain.ResourceMonitor'):
+                            with patch('models.production_models.markov_chain.markov_chain.TextPreprocessor'):
+                                # Call load_model
+                                MarkovChain.load_model(
+                                    filepath=model_path,
+                                    environment="test",
+                                    logger=mock_logger
+                                )
+
+                                # Verify logger was called for successful loading
+                                mock_logger.info.assert_any_call(
+                                    "ONNX model loading started", extra=ANY)

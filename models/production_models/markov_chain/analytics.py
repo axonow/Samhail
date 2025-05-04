@@ -13,9 +13,9 @@ project_root = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from utils.loggers.json_logger import get_logger
-from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
 from utils.system_monitoring import ResourceMonitor
+from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
+from utils.loggers.json_logger import get_logger
 
 class MarkovChainAnalytics:
     """
