@@ -7,9 +7,11 @@ import multiprocessing
 import concurrent.futures
 import numpy as np
 import psutil
+import sys
 from math import ceil
 
 from utils.loggers.json_logger import get_logger
+from utils.system_monitoring import ResourceMonitor
 from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
 from collections import defaultdict
 from psycopg2.extras import execute_values
@@ -17,45 +19,29 @@ from onnx import helper, TensorProto
 import onnx
 import onnxruntime as ort
 from concurrent.futures import ProcessPoolExecutor
-
-# Import the TextPreprocessor class
-try:
-    from data_preprocessing.text_preprocessor import TextPreprocessor
-    TEXT_PREPROCESSOR_AVAILABLE = True
-except ImportError as e:
-    TEXT_PREPROCESSOR_AVAILABLE = False
-    print(f"\033[1mImport error: {e}\033[0m")  # Print in bold format
-    # The path might be incorrect or the module not installed
+from data_preprocessing.text_preprocessor import TextPreprocessor
 
 # Define a standalone preprocessing function for parallel processing
 
 
-def process_text_parallel(args):
+def process_text_batch(args):
     """
-    Process a text for parallel training.
+    Process a text batch for distributed training.
     This is a standalone function outside of the class to avoid pickling issues.
 
     Args:
-        args (tuple): A tuple containing (idx, text, preprocess_flag, n_gram, preprocessor_available)
+        args (tuple): A tuple containing (idx, text, n_gram)
 
     Returns:
         dict: A dictionary with processed transitions and statistics
     """
-    idx, text, preprocess_flag, n_gram, preprocessor_available = args
+    idx, text, n_gram = args
     start_time = time.time()
 
-    # Preprocess text if requested
-    if preprocess_flag and preprocessor_available:
-        try:
-            # Simple preprocessing without using TextPreprocessor class
-            # because it can't be pickled across processes
-            # Convert to lowercase
-            text = text.lower()
-            # Handle basic whitespace
-            text = ' '.join(text.split())
-        except Exception:
-            # If preprocessing fails, continue with original text
-            pass
+    # Always preprocess text with basic operations that can be pickled
+    # Convert to lowercase and handle basic whitespace
+    text = text.lower()
+    text = ' '.join(text.split())
 
     words = text.split()
 
@@ -104,67 +90,63 @@ class MarkovChain:
     def __init__(
         self,
         n_gram=1,
-        memory_threshold=10000,
         db_config=None,
         environment="development",
         logger=None
     ):
         """
-        Initializes the Markov Chain with flexible storage options.
+        Initializes the Markov Chain model with database storage for large-scale data.
 
         Args:
             n_gram (int): Number of words to consider as a state (default: 1)
-            memory_threshold (int): Maximum number of states before switching to DB
             db_config (dict, optional): PostgreSQL configuration dictionary
             environment (str): Which environment to use ('development' or 'test')
             logger (Logger, required): Logger instance for logging model activities
-
-        Attributes:
-            transitions: Dictionary for in-memory transition storage
-            total_counts: Dictionary for in-memory total counts
-            n_gram: The size of word sequences to use as states
-            using_db: Flag indicating if DB storage is active
-            db_adapter: Database adapter for PostgreSQL operations
-            environment: Current environment setting ('development' or 'test')
-            logger: Logger instance for all logging operations
         """
         self.n_gram = n_gram
-        self.memory_threshold = memory_threshold
-        self.transitions = defaultdict(lambda: defaultdict(int))
-        self.total_counts = defaultdict(int)
-        self.using_db = False
         self.environment = environment
         self.db_adapter = None
+
+        # Add default attributes needed by various methods
+        # Use standard defaultdict initialization - __getstate__ will handle serialization
+        self.transitions = defaultdict(lambda: defaultdict(int))
+        self.total_counts = defaultdict(int)
+        self.using_db = True  # Default to database storage
 
         # Ensure logger is provided
         if logger is None:
             raise ValueError("Logger instance must be provided")
         self.logger = logger
 
-        # Initialize text preprocessor if available
-        self.preprocessor = None
-        if TEXT_PREPROCESSOR_AVAILABLE:
-            try:
-                self.preprocessor = TextPreprocessor()
-                self.logger.info("TextPreprocessor initialized")
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to initialize TextPreprocessor: {e}")
+        # Initialize resource monitor for system monitoring
+        self.resource_monitor = ResourceMonitor(
+            logger=self.logger,
+            monitoring_interval=10.0  # Log metrics every 10 seconds
+        )
 
-        # Log initialization details
+        # Initialize text preprocessor
+        self.preprocessor = None
+        try:
+            self.preprocessor = TextPreprocessor()
+            self.logger.info("TextPreprocessor initialized")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize TextPreprocessor: {e}")
+            raise ValueError(
+                "TextPreprocessor initialization failed, which is required for processing")
+
+        # Log initialization details with system info
         self.logger.info("MarkovChain initialized", extra={
             "metrics": {
                 "n_gram": n_gram,
-                "memory_threshold": memory_threshold,
                 "environment": environment,
-                "preprocessor_available": TEXT_PREPROCESSOR_AVAILABLE
+                "preprocessor_available": self.preprocessor is not None,
+                "system": self.resource_monitor.get_resource_usage()
             }
         })
 
-        # Initialize database adapter
+        # Initialize database adapter - this is mandatory
         try:
-            # Initialize the database adapter without passing db_config
-            # Let the adapter handle loading the configuration
+            # Initialize the database adapter
             if db_config is not None:
                 self.db_adapter = MarkovChainPostgreSqlAdapter(
                     environment=environment,
@@ -179,42 +161,63 @@ class MarkovChain:
 
             # Check if the adapter is usable
             if self.db_adapter and self.db_adapter.is_usable():
-                self.using_db = True
                 self.logger.info("Database adapter initialized and ready to use", extra={
                     "metrics": {
                         "environment": self.environment,
                     }
                 })
             else:
-                self.logger.warning("Database adapter not usable, using in-memory storage", extra={
-                    "metrics": {
-                        "reason": "adapter not usable",
-                        "fallback": "in-memory storage"
-                    }
-                })
-                self.using_db = False
+                error_msg = "Database adapter is not usable - required for large-scale model training"
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
 
         except Exception as e:
-            self.logger.warning("Database adapter initialization failed", extra={
-                "metrics": {
-                    "error": str(e),
-                    "fallback": "in-memory storage"
-                }
+            error_msg = f"Database adapter initialization failed: {str(e)}"
+            self.logger.error(error_msg, extra={
+                "metrics": {"error": str(e)}
             })
-            self.using_db = False
+            raise ValueError(error_msg)
 
-    def train(self, text, clear_previous=True, preprocess=True):
+    def train(self, text_input, clear_previous=True, n_jobs=-1):
         """
-        Trains the Markov Chain on a given text by learning word transitions.
+        Trains the Markov Chain model using database storage. 
+        Automatically handles single text or multiple texts with parallel processing.
 
         Args:
-            text (str): The input text used to train the Markov Chain.
+            text_input (str or list): Either a single text string or a list of text strings to train on
             clear_previous (bool): Whether to clear previous training data
-            preprocess (bool): Whether to preprocess the text before training
+            n_jobs (int): Number of parallel jobs when training on multiple texts (-1 for all cores)
+
+        Returns:
+            dict: Training statistics
         """
-        # Apply preprocessing if requested
-        if preprocess:
-            text = self._preprocess_text(text)
+        # Start resource monitoring for training
+        self.resource_monitor.start("markov_training")
+
+        # Determine if we're dealing with a single text or multiple texts
+        if isinstance(text_input, str):
+            return self._train_single_text(text_input, clear_previous)
+        elif isinstance(text_input, list) and all(isinstance(t, str) for t in text_input):
+            return self._train_multiple_texts(text_input, clear_previous, n_jobs)
+        else:
+            error_msg = "Input must be either a single text string or a list of text strings"
+            self.logger.error(error_msg)
+            self.resource_monitor.stop()
+            raise ValueError(error_msg)
+
+    def _train_single_text(self, text, clear_previous=True):
+        """
+        Internal method to train on a single text string.
+
+        Args:
+            text (str): The input text used to train the model
+            clear_previous (bool): Whether to clear previous training data
+
+        Returns:
+            dict: Training statistics
+        """
+        # Always preprocess the text
+        text = self._preprocess_text(text)
 
         words = text.split()
         if len(words) < self.n_gram + 1:
@@ -224,74 +227,149 @@ class MarkovChain:
                     "n_gram": self.n_gram,
                     "text_length": len(words),
                     "min_required": self.n_gram + 1,
+                    "system": self.resource_monitor.get_resource_usage()
                 }
             })
-            return
+            self.resource_monitor.stop()
+            return {"error": "Text too short for training"}
 
-        # Estimate the potential size of the model
+        # Log training parameters with system metrics
         unique_words_estimate = len(set(words))
         estimated_transitions = unique_words_estimate**2
 
-        # Determine storage strategy
-        use_db = (
-            estimated_transitions > self.memory_threshold
-        ) and self.db_adapter is not None
-
-        # Log training parameters
-        self.logger.info("Training started", extra={
-            "metrics": {
+        self.resource_monitor.log_progress(
+            "Training started",
+            operation="markov_training_start",
+            extra_metrics={
                 "text_sample": text[:100] + ("..." if len(text) > 100 else ""),
                 "word_count": len(words),
                 "unique_words": unique_words_estimate,
                 "estimated_transitions": estimated_transitions,
-                "storage": "database" if use_db else "memory",
+                "storage": "database",
                 "n_gram": self.n_gram,
-                "clear_previous": clear_previous,
-                "preprocess": preprocess,
+                "clear_previous": clear_previous
+            }
+        )
+
+        # Clear previous data if requested
+        if clear_previous:
+            self.db_adapter.clear_tables(self.n_gram)
+            self.logger.info("Cleared previous database training data", extra={
+                "metrics": {"environment": self.environment, "n_gram": self.n_gram}
+            })
+
+        # Process transitions in batches
+        batch_size = 5000
+        transitions_batch = []
+        total_transitions = 0
+        start_time = time.time()
+
+        for i in range(len(words) - self.n_gram):
+            if self.n_gram == 1:
+                current_state = words[i]
+                next_word = words[i + 1]
+            else:
+                current_state = " ".join(words[i: i + self.n_gram])
+                next_word = words[i + self.n_gram]
+
+            # Add to batch
+            transitions_batch.append((current_state, next_word, 1))
+
+            # Process batch when it reaches the threshold
+            if len(transitions_batch) >= batch_size:
+                self.db_adapter.insert_transitions_batch(
+                    transitions_batch, self.n_gram)
+                total_transitions += len(transitions_batch)
+                transitions_batch = []
+
+                # Log batch processing
+                if total_transitions % (batch_size * 5) == 0:
+                    self.logger.info("Database training progress", extra={
+                        "metrics": {
+                            "transitions_processed": total_transitions,
+                            "environment": self.environment,
+                            "n_gram": self.n_gram,
+                        }
+                    })
+
+        # Insert any remaining transitions
+        if transitions_batch:
+            self.db_adapter.insert_transitions_batch(
+                transitions_batch, self.n_gram)
+            total_transitions += len(transitions_batch)
+
+        # Update total counts
+        self.db_adapter.update_total_counts(self.n_gram)
+
+        # Calculate statistics
+        training_time = time.time() - start_time
+        transitions_per_second = total_transitions / \
+            training_time if training_time > 0 else 0
+
+        # Get database statistics
+        try:
+            db_stats = self.db_adapter.get_model_statistics(self.n_gram)
+            total_states = db_stats.get("states_count", 0)
+        except Exception as e:
+            self.logger.error(f"Error getting DB statistics: {e}")
+            total_states = 0
+
+        # Log database training completion
+        self.logger.info("Database training completed", extra={
+            "metrics": {
+                "environment": self.environment,
+                "n_gram": self.n_gram,
+                "total_transitions": total_transitions,
+                "total_states": total_states,
+                "training_time_seconds": training_time
             }
         })
 
-        if use_db:
-            self._train_using_db(words, clear_previous)
-        else:
-            self._train_using_memory(words, clear_previous)
-
-        # Log training completion
-        self.logger.info("Training completed", extra={
-            "metrics": {
-                "storage": "database" if self.using_db else "memory",
+        # Log training completion with final system metrics
+        self.resource_monitor.log_progress(
+            "Training completed",
+            operation="markov_training_complete",
+            extra_metrics={
+                "storage": "database",
                 "n_gram": self.n_gram,
                 "word_count": len(words),
+                "total_transitions": total_transitions,
+                "training_time_seconds": training_time
             }
-        })
+        )
 
-    def train_parallel(self, texts, clear_previous=True, preprocess=True, n_jobs=-1):
+        # Stop resource monitoring
+        self.resource_monitor.stop()
+
+        return {
+            "training_time": training_time,
+            "word_count": len(words),
+            "total_states": total_states,
+            "total_transitions": total_transitions,
+            "transitions_per_second": transitions_per_second
+        }
+
+    def _train_multiple_texts(self, texts, clear_previous=True, n_jobs=-1):
         """
-        Train model on multiple texts using parallel processing
+        Internal method to train on multiple texts using parallel processing.
 
         Args:
             texts (list): List of text strings to train on
-            clear_previous (bool): Whether to clear previous training
-            preprocess (bool): Whether to preprocess texts
+            clear_previous (bool): Whether to clear previous training data
             n_jobs (int): Number of parallel jobs (-1 for all cores)
-        """
 
+        Returns:
+            dict: Training statistics
+        """
         if n_jobs < 0:
             n_jobs = multiprocessing.cpu_count()
 
         # Clear if requested
         if clear_previous:
-            if self.using_db and self.db_adapter:
-                self.db_adapter.clear_tables(self.n_gram)
-                self.logger.info("Cleared database tables for training", extra={
-                    "metrics": {"environment": self.environment, "n_gram": self.n_gram}
-                })
-            else:
-                self.transitions.clear()
-                self.total_counts.clear()
-                self.logger.info("Cleared in-memory transitions for training", extra={
-                    "metrics": {"n_gram": self.n_gram}
-                })
+            self.db_adapter.clear_tables(self.n_gram)
+            self.logger.info("Cleared database tables for training", extra={
+                "metrics": {"environment": self.environment, "n_gram": self.n_gram}
+            })
 
         # Log start of parallel training
         total_texts = len(texts)
@@ -304,22 +382,19 @@ class MarkovChain:
                 "total_texts": total_texts,
                 "total_chars": total_chars,
                 "avg_chars_per_text": avg_chars,
-                "preprocess": preprocess,
                 "n_gram": self.n_gram,
-                "storage": "database" if self.using_db else "memory"
+                "storage": "database"
             }
         })
 
         # Estimate time based on text volume (very rough estimate)
-        estimated_time_per_text_ms = 500 if preprocess else 200  # milliseconds per text
+        estimated_time_per_text_ms = 500  # milliseconds per text
         estimated_total_time = (
-            # in seconds
             estimated_time_per_text_ms * total_texts) / (1000 * n_jobs)
         self.logger.info(
             f"Estimated training time: {estimated_total_time:.1f} seconds")
 
         # Create batch tracking variables
-        # Report progress ~100 times
         batch_size = max(100, ceil(total_texts / 100))
         last_report_time = time.time()
         report_interval = 2.0  # seconds between progress reports
@@ -329,15 +404,14 @@ class MarkovChain:
         start_time = time.time()
 
         # Create argument tuples for the standalone processing function
-        # Include necessary information without passing the whole class
         process_args = [
-            (i, text, preprocess, self.n_gram, TEXT_PREPROCESSOR_AVAILABLE)
+            (i, text, self.n_gram)
             for i, text in enumerate(texts)
         ]
 
-        # Process texts in parallel with better progress reporting
+        # Process texts in parallel with progress reporting
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            futures = [executor.submit(process_text_parallel, arg)
+            futures = [executor.submit(process_text_batch, arg)
                        for arg in process_args]
 
             # Track and combine results as they complete
@@ -348,16 +422,12 @@ class MarkovChain:
                     # Update model with this batch's transitions
                     for state, next_words in result["transitions"].items():
                         for next_word, count in next_words.items():
-                            if self.using_db and self.db_adapter:
-                                if isinstance(state, tuple):
-                                    db_state = " ".join(state)
-                                else:
-                                    db_state = str(state)
-                                self.db_adapter.increment_transition(
-                                    db_state, next_word, count, self.n_gram)
+                            if isinstance(state, tuple):
+                                db_state = " ".join(state)
                             else:
-                                self.transitions[state][next_word] += count
-                                self.total_counts[state] += count
+                                db_state = str(state)
+                            self.db_adapter.increment_transition(
+                                db_state, next_word, count, self.n_gram)
 
                     # Update progress counters
                     processed_count += 1
@@ -404,23 +474,18 @@ class MarkovChain:
         transitions_per_second = total_transitions / \
             training_time if training_time > 0 else 0
 
-        if self.using_db and self.db_adapter:
-            # Update total counts in database
-            self.db_adapter.update_total_counts(self.n_gram)
+        # Update total counts in database
+        self.db_adapter.update_total_counts(self.n_gram)
 
-            # Get database statistics
-            try:
-                db_stats = self.db_adapter.get_model_statistics(self.n_gram)
-                if "transitions_count" in db_stats:
-                    total_transitions = db_stats["transitions_count"]
-                if "states_count" in db_stats:
-                    total_states = db_stats["states_count"]
-            except Exception as e:
-                self.logger.error(f"Error getting final DB statistics: {e}")
-        else:
-            total_transitions = sum(len(next_words)
-                                    for next_words in self.transitions.values())
-            total_states = len(self.transitions)
+        # Get database statistics
+        try:
+            db_stats = self.db_adapter.get_model_statistics(self.n_gram)
+            if "transitions_count" in db_stats:
+                total_transitions = db_stats["transitions_count"]
+            if "states_count" in db_stats:
+                total_states = db_stats["states_count"]
+        except Exception as e:
+            self.logger.error(f"Error getting final DB statistics: {e}")
 
         self.logger.info("Parallel training completed", extra={
             "metrics": {
@@ -429,9 +494,12 @@ class MarkovChain:
                 "total_states": total_states,
                 "total_transitions": total_transitions,
                 "transitions_per_second": transitions_per_second,
-                "storage": "database" if self.using_db else "memory"
+                "storage": "database"
             }
         })
+
+        # Stop resource monitoring
+        self.resource_monitor.stop()
 
         return {
             "training_time": training_time,
@@ -440,133 +508,6 @@ class MarkovChain:
             "total_transitions": total_transitions,
             "transitions_per_second": transitions_per_second
         }
-
-    def _train_using_memory(self, words, clear_previous):
-        """Train the model using in-memory storage"""
-        if clear_previous:
-            # Clear previous counts to ensure consistency
-            self.transitions.clear()
-            self.total_counts.clear()
-
-        # Count transitions for n-grams
-        for i in range(len(words) - self.n_gram):
-            # Create n-gram state
-            if self.n_gram == 1:
-                current_state = words[i]
-                next_word = words[i + 1]
-            else:
-                current_state = tuple(words[i: i + self.n_gram])
-                next_word = words[i + self.n_gram]
-
-            # Update transitions
-            self.transitions[current_state][next_word] += 1
-
-            # Directly update total counts
-            self.total_counts[current_state] += 1
-
-        self.using_db = False
-
-        # Log memory training details
-        self.logger.info("Memory training completed", extra={
-            "metrics": {
-                "states_count": len(self.transitions),
-                "transitions_count": sum(
-                    len(next_words) for next_words in self.transitions.values()
-                ),
-                "n_gram": self.n_gram,
-            }
-        })
-
-    def _train_using_db(self, words, clear_previous):
-        """Train the model using PostgreSQL storage through the adapter"""
-        if not self.db_adapter:
-            self.logger.warning("Database adapter not available, fallback to memory", extra={
-                "metrics": {
-                    "reason": "No database adapter",
-                    "n_gram": self.n_gram,
-                }
-            })
-
-            self._train_using_memory(words, clear_previous)
-            return
-
-        try:
-            # Clear previous data if requested
-            if clear_previous:
-                self.db_adapter.clear_tables(self.n_gram)
-                self.logger.info("Cleared previous database training data", extra={
-                    "metrics": {"environment": self.environment, "n_gram": self.n_gram}
-                })
-
-            # Process transitions in batches
-            batch_size = 5000
-            transitions_batch = []
-            total_transitions = 0
-
-            for i in range(len(words) - self.n_gram):
-                if self.n_gram == 1:
-                    current_state = words[i]
-                    next_word = words[i + 1]
-                else:
-                    current_state = " ".join(words[i: i + self.n_gram])
-                    next_word = words[i + self.n_gram]
-
-                # Add to batch
-                transitions_batch.append((current_state, next_word, 1))
-
-                # Process batch when it reaches the threshold
-                if len(transitions_batch) >= batch_size:
-                    self.db_adapter.insert_transitions_batch(
-                        transitions_batch, self.n_gram)
-                    total_transitions += len(transitions_batch)
-                    transitions_batch = []
-
-                    # Log batch processing
-                    if total_transitions % (batch_size * 5) == 0:
-                        self.logger.info("Database training progress", extra={
-                            "metrics": {
-                                "transitions_processed": total_transitions,
-                                "environment": self.environment,
-                                "n_gram": self.n_gram,
-                            }
-                        })
-
-            # Insert any remaining transitions
-            if transitions_batch:
-                self.db_adapter.insert_transitions_batch(
-                    transitions_batch, self.n_gram)
-                total_transitions += len(transitions_batch)
-
-            # Update total counts
-            self.db_adapter.update_total_counts(self.n_gram)
-
-            self.using_db = True
-
-            # Log database training completion
-            self.logger.info("Database training completed", extra={
-                "metrics": {
-                    "environment": self.environment,
-                    "n_gram": self.n_gram,
-                    "total_transitions": total_transitions,
-                }
-            })
-
-            # Clear in-memory structures to save RAM
-            self.transitions.clear()
-            self.total_counts.clear()
-
-        except Exception as e:
-            # Log database error
-            self.logger.error("Database training error", extra={
-                "metrics": {
-                    "error": str(e),
-                    "environment": self.environment,
-                    "n_gram": self.n_gram,
-                    "fallback": "memory",
-                }
-            })
-
-            self._train_using_memory(words, clear_previous)
 
     def _preprocess_text(self, text):
         """
@@ -595,6 +536,7 @@ class MarkovChain:
                 "metrics": {"text_sample": text[:50] + ("..." if len(text) > 50 else "")}
             })
             return text
+
         try:
             self.logger.info("Text normalization started", extra={
                 "metrics": {
@@ -603,17 +545,15 @@ class MarkovChain:
                 }
             })
 
-            preprocessor = TextPreprocessor()
-
             # Apply comprehensive normalization pipeline
-            text = preprocessor.to_lowercase(text)
-            text = preprocessor.handle_contractions(text)
-            text = preprocessor.normalize(text)
-            text = preprocessor.normalize_social_media_text(text)
-            text = preprocessor.handle_emojis(text)
-            text = preprocessor.handle_urls(text)
-            text = preprocessor.remove_html_tags(text)
-            text = preprocessor.handle_whitespace(text)
+            text = self.preprocessor.to_lowercase(text)
+            text = self.preprocessor.handle_contractions(text)
+            text = self.preprocessor.normalize(text)
+            text = self.preprocessor.normalize_social_media_text(text)
+            text = self.preprocessor.handle_emojis(text)
+            text = self.preprocessor.handle_urls(text)
+            text = self.preprocessor.remove_html_tags(text)
+            text = self.preprocessor.handle_whitespace(text)
 
             # Log normalization result
             self.logger.info("Text normalization completed", extra={
@@ -631,13 +571,14 @@ class MarkovChain:
                 "metrics": {"error": str(e), "error_type": type(e).__name__}
             })
 
+            # Return the original text unchanged
             return text
 
     def predict(self, current_state, preprocess=True, temperature=1.0, top_k=None, top_p=None,
                 repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0,
-                avoid_words=None, generation_context=None):
+                avoid_words=None, generation_context=None, deterministic=False):
         """
-        Predicts the next word based on the current state using learned probabilities.
+        Predicts the next word based on the current state using learned probabilities from database.
 
         Args:
             current_state: The current state (word or tuple of words) for prediction.
@@ -664,6 +605,8 @@ class MarkovChain:
             generation_context (dict, optional): Context from the generation process, including generated words
                                                  and their frequencies for penalties
                                                  Default: None
+            deterministic (bool): If True, always select the highest probability word
+                                  Default: False (use probabilistic selection)
 
         Returns:
             str or None: The predicted next word, or None if the current state is not in the model.
@@ -677,7 +620,7 @@ class MarkovChain:
                     else " ".join(current_state)
                 ),
                 "n_gram": self.n_gram,
-                "storage": "database" if self.using_db else "memory",
+                "storage": "database",
                 "preprocess": preprocess,
                 "temperature": temperature,
                 "top_k": top_k,
@@ -685,7 +628,8 @@ class MarkovChain:
                 "repetition_penalty": repetition_penalty,
                 "presence_penalty": presence_penalty,
                 "frequency_penalty": frequency_penalty,
-                "avoid_words_count": len(avoid_words) if avoid_words else 0
+                "avoid_words_count": len(avoid_words) if avoid_words else 0,
+                "deterministic": deterministic
             }
         })
 
@@ -698,10 +642,10 @@ class MarkovChain:
             if self.n_gram > 1:
                 words = current_state.split()
                 if len(words) >= self.n_gram:
-                    current_state = tuple(words[-self.n_gram:])
+                    current_state = " ".join(words[-self.n_gram:])
                 else:
                     # Log insufficient words
-                    self.logger.warning("Prediction failed - insufficient words", extra={
+                    self.logger.warning("Insufficient words for prediction", extra={
                         "metrics": {
                             "words_provided": len(words),
                             "words_required": self.n_gram,
@@ -709,225 +653,45 @@ class MarkovChain:
                     })
                     return None
 
-        # Choose the appropriate prediction method based on storage
-        if self.using_db and self.db_adapter:
-            next_word = self._predict_from_db(current_state, temperature, top_k, top_p,
-                                              repetition_penalty, presence_penalty, frequency_penalty,
-                                              avoid_words, generation_context)
+        # Convert tuple to string for database query if needed
+        if isinstance(current_state, tuple):
+            db_state = " ".join(current_state)
         else:
-            next_word = self._predict_from_memory(current_state, temperature, top_k, top_p,
-                                                  repetition_penalty, presence_penalty, frequency_penalty,
-                                                  avoid_words, generation_context)
-
-        # Log prediction result
-        self.logger.info("Prediction result", extra={
-            "metrics": {
-                "current_state": (
-                    str(current_state)
-                    if not isinstance(current_state, tuple)
-                    else " ".join(current_state)
-                ),
-                "next_word": next_word if next_word is not None else "None",
-                "success": next_word is not None,
-                "storage": "database" if self.using_db else "memory",
-                "temperature": temperature,
-                "top_k": top_k,
-                "top_p": top_p,
-                "repetition_penalty": repetition_penalty
-            }
-        })
-
-        return next_word
-
-    def _predict_from_memory(self, current_state, temperature=1.0, top_k=None, top_p=None,
-                             repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0,
-                             avoid_words=None, generation_context=None):
-        """
-        Predict next word using in-memory storage with control parameters.
-
-        Args:
-            current_state: The current state (word or tuple)
-            temperature: Controls randomness
-            top_k: Limit selection to top k most likely words
-            top_p: Nucleus sampling threshold
-            repetition_penalty: Penalty for repeated words
-            presence_penalty: Penalty for specific words being present
-            frequency_penalty: Penalty based on word frequency
-            avoid_words: List of words to avoid
-            generation_context: Context from generation process for penalties
-
-        Returns:
-            str or None: The predicted next word
-        """
-        if current_state not in self.transitions:
-            return None
-
-        next_words = self.transitions[current_state]
-        total = self.total_counts[current_state]
-
-        # Get initial probabilities
-        probabilities = {word: count / total for word,
-                         count in next_words.items()}
-
-        # Avoid specific words if requested
-        if avoid_words:
-            for word in avoid_words:
-                if word in probabilities:
-                    probabilities[word] = 0.0
-
-        # Apply generation context penalties if provided
-        if generation_context and isinstance(generation_context, dict):
-            generated_words = generation_context.get('generated_words', [])
-            word_frequencies = generation_context.get('word_frequencies', {})
-
-            # Apply repetition penalty
-            if repetition_penalty != 1.0:
-                for word in probabilities:
-                    if word in generated_words:
-                        # Penalize words that have already appeared
-                        # For repetition_penalty > 1.0, this reduces probability
-                        # For repetition_penalty < 1.0, this increases probability (encourages repetition)
-                        probabilities[word] /= repetition_penalty
-
-            # Apply frequency penalty
-            if frequency_penalty != 0.0:
-                for word in probabilities:
-                    frequency = word_frequencies.get(word, 0)
-                    if frequency > 0:
-                        # Stronger penalty for more frequent words
-                        probabilities[word] -= frequency_penalty * frequency / \
-                            len(generated_words) if generated_words else 0
-
-            # Apply presence penalty
-            if presence_penalty != 0.0:
-                for word in probabilities:
-                    if word in word_frequencies:
-                        # Fixed penalty just for being present
-                        probabilities[word] -= presence_penalty
-
-        # Ensure no negative probabilities
-        probabilities = {word: max(0.0, prob)
-                         for word, prob in probabilities.items()}
-
-        # Check if we have any valid options left
-        if not any(probabilities.values()):
-            return None
-
-        # Apply temperature
-        if temperature != 1.0:
-            # For temperature < 1.0: Make distribution more peaked (lower entropy)
-            # For temperature > 1.0: Make distribution more uniform (higher entropy)
-            probabilities = {
-                word: (prob ** (1.0 / temperature))
-                for word, prob in probabilities.items() if prob > 0
-            }
-
-        # Normalize probabilities after transformations
-        total_prob = sum(probabilities.values())
-        if total_prob > 0:
-            probabilities = {word: prob / total_prob for word,
-                             prob in probabilities.items()}
-        else:
-            return None
-
-        # Apply top-k filtering
-        if top_k is not None and top_k > 0:
-            # Keep only top k items by probability
-            sorted_words = sorted(probabilities.items(),
-                                  key=lambda x: x[1], reverse=True)
-            top_k_words = sorted_words[:top_k]
-            probabilities = dict(top_k_words)
-
-            # Re-normalize probabilities
-            total_prob = sum(probabilities.values())
-            if total_prob > 0:
-                probabilities = {
-                    word: prob / total_prob for word, prob in probabilities.items()}
-
-        # Apply nucleus (top-p) sampling
-        if top_p is not None and 0.0 < top_p < 1.0:
-            # Sort words by probability
-            sorted_words = sorted(probabilities.items(),
-                                  key=lambda x: x[1], reverse=True)
-
-            # Find the smallest set of words that exceed the cumulative probability threshold
-            cumulative_prob = 0.0
-            nucleus_words = []
-
-            for word, prob in sorted_words:
-                nucleus_words.append((word, prob))
-                cumulative_prob += prob
-                if cumulative_prob >= top_p:
-                    break
-
-            # Update probabilities
-            probabilities = dict(nucleus_words)
-
-            # Re-normalize probabilities
-            total_prob = sum(probabilities.values())
-            if total_prob > 0:
-                probabilities = {
-                    word: prob / total_prob for word, prob in probabilities.items()}
-
-        # Sample from final distribution
-        words = list(probabilities.keys())
-        probs = list(probabilities.values())
-
-        if not words:
-            return None
+            db_state = str(current_state)
 
         try:
-            return random.choices(words, weights=probs)[0]
-        except ValueError:
-            # Fallback if weights are invalid
-            self.logger.warning(
-                "Invalid probability distribution, using uniform selection")
-            return random.choice(words)
-
-    def _predict_from_db(self, current_state, temperature=1.0, top_k=None, top_p=None,
-                         repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0,
-                         avoid_words=None, generation_context=None):
-        """
-        Predict next word using database with control parameters.
-
-        Args:
-            current_state: The current state (word or tuple)
-            temperature: Controls randomness
-            top_k: Limit selection to top k most likely words
-            top_p: Nucleus sampling threshold
-            repetition_penalty: Penalty for repeated words
-            presence_penalty: Penalty for specific words being present
-            frequency_penalty: Penalty based on word frequency
-            avoid_words: List of words to avoid
-            generation_context: Context from generation process for penalties
-
-        Returns:
-            str or None: The predicted next word
-        """
-        if not self.db_adapter:
-            self.logger.warning(
-                "Failed to use database adapter for prediction, no adapter available")
-            return None
-
-        try:
-            # Convert tuple to string for database query if needed
-            if isinstance(current_state, tuple):
-                db_state = " ".join(current_state)
-            else:
-                db_state = str(current_state)
-
             # Get all transition probabilities for this state
             probabilities = self.db_adapter.predict_next_word(
                 db_state, self.n_gram)
+
+            # If no probabilities returned, log and return None
             if not probabilities:
+                self.logger.warning("No transitions found for state", extra={
+                    "metrics": {"state": db_state}
+                })
                 return None
 
-            # Apply control parameters
-            # Avoid specific words if requested
+            # Apply avoid_words filter if provided
             if avoid_words:
-                for word in avoid_words:
-                    if word in probabilities:
-                        probabilities[word] = 0.0
+                probabilities = {
+                    k: v for k, v in probabilities.items() if k not in avoid_words}
+
+            if not probabilities:
+                self.logger.warning("No transitions available after filtering")
+                return None
+
+            # If deterministic mode is enabled or we're using near-zero temperature,
+            # return the highest probability word
+            if deterministic or temperature <= 0.01:
+                max_prob_word = max(probabilities.items(),
+                                    key=lambda x: x[1])[0]
+                self.logger.info("Deterministic prediction result", extra={
+                    "metrics": {
+                        "current_state": db_state,
+                        "next_word": max_prob_word
+                    }
+                })
+                return max_prob_word
 
             # Apply generation context penalties if provided
             if generation_context and isinstance(generation_context, dict):
@@ -961,10 +725,19 @@ class MarkovChain:
 
             # Check if we have any valid options left
             if not any(probabilities.values()):
+                self.logger.warning(
+                    "No valid options after applying penalties")
                 return None
 
             # Apply temperature
             if temperature != 1.0:
+                # Handle near-zero temperature - pick the most likely option deterministically
+                if temperature <= 0.01:
+                    max_word = max(probabilities.items(),
+                                   key=lambda x: x[1])[0]
+                    return max_word
+
+                # For temperature > 0.01: Apply temperature scaling
                 probabilities = {
                     word: (prob ** (1.0 / temperature))
                     for word, prob in probabilities.items() if prob > 0
@@ -976,6 +749,8 @@ class MarkovChain:
                 probabilities = {
                     word: prob / total_prob for word, prob in probabilities.items()}
             else:
+                self.logger.warning(
+                    "No valid probabilities after temperature scaling")
                 return None
 
             # Apply top-k filtering
@@ -1018,30 +793,59 @@ class MarkovChain:
             prob_values = list(probabilities.values())
 
             if not next_words:
+                self.logger.warning("No words available for selection")
                 return None
 
             try:
-                return random.choices(next_words, weights=prob_values)[0]
+                selected_word = random.choices(
+                    next_words, weights=prob_values)[0]
+
+                # Log prediction result
+                self.logger.info("Prediction result", extra={
+                    "metrics": {
+                        "current_state": db_state,
+                        "next_word": selected_word,
+                        "success": True,
+                        "temperature": temperature,
+                        "top_k": top_k,
+                        "top_p": top_p,
+                        "repetition_penalty": repetition_penalty
+                    }
+                })
+
+                return selected_word
             except ValueError:
                 # Fallback if weights are invalid
                 self.logger.warning(
                     "Invalid probability distribution, using uniform selection")
-                return random.choice(next_words)
+                selected_word = random.choice(next_words)
+
+                self.logger.info("Prediction result (fallback)", extra={
+                    "metrics": {
+                        "current_state": db_state,
+                        "next_word": selected_word,
+                        "success": True,
+                        "method": "uniform_fallback"
+                    }
+                })
+
+                return selected_word
 
         except Exception as e:
-            self.logger.error(f"Database error during prediction: {e}")
+            self.logger.error(f"Error predicting next word: {e}", extra={
+                "metrics": {"error": str(e)}
+            })
             return None
 
-    def generate_text(self, start=None, max_length=100, preprocess=True,
-                      temperature=1.0, top_k=None, top_p=None, repetition_penalty=1.0,
-                      presence_penalty=0.0, frequency_penalty=0.0, avoid_words=None):
+    def generate_text(self, start=None, max_length=100, temperature=1.0, top_k=None, top_p=None,
+                      repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0, avoid_words=None):
         """
         Generates text starting from a given state with control parameters.
+        Uses database storage for transition probabilities.
 
         Args:
             start: Starting state (word or tuple). If None, a random state is chosen.
             max_length (int): Maximum number of words to generate.
-            preprocess (bool): Whether to preprocess the starting state.
             temperature (float): Controls randomness. Higher values (e.g., 1.5) increase randomness,
                                 lower values (e.g., 0.5) make generation more deterministic.
             top_k (int, optional): If set, only sample from top k most probable words.
@@ -1061,8 +865,7 @@ class MarkovChain:
                 "start": str(start) if start else "random",
                 "max_length": max_length,
                 "n_gram": self.n_gram,
-                "storage": "database" if self.using_db else "memory",
-                "preprocess": preprocess,
+                "storage": "database",
                 "temperature": temperature,
                 "top_k": top_k,
                 "top_p": top_p,
@@ -1073,21 +876,15 @@ class MarkovChain:
             }
         })
 
-        # Determine if we have any transitions to work with
-        if self.using_db and self.db_adapter:
-            has_transitions = self.db_adapter.has_transitions(self.n_gram)
-        else:
-            has_transitions = bool(self.transitions)
-
-        if not has_transitions:
-            # Log no transitions available
+        # Check if the model has any transitions
+        if not self.db_adapter.has_transitions(self.n_gram):
             self.logger.warning("Text generation failed - model not trained", extra={
-                "metrics": {"storage": "database" if self.using_db else "memory"}
+                "metrics": {"storage": "database"}
             })
             return "Model not trained"
 
-        # Preprocess the starting state if needed
-        if preprocess and start and isinstance(start, str):
+        # Always preprocess the starting state if it's a string
+        if start and isinstance(start, str):
             start = self._preprocess_text(start)
 
         # Get a valid starting state
@@ -1186,11 +983,11 @@ class MarkovChain:
         # Log generation completion
         self.logger.info("Text generation completed", extra={
             "metrics": {
-                "text": generated_text,
+                "text": generated_text[:500] + ("..." if len(generated_text) > 500 else ""),
                 "n_gram": self.n_gram,
                 "start": str(start) if start else "random",
                 "words_generated": len(text),
-                "storage": "PostgreSQL" if self.using_db else "memory",
+                "storage": "database",
                 "temperature": temperature,
                 "top_k": top_k,
                 "top_p": top_p,
@@ -1202,17 +999,24 @@ class MarkovChain:
         return generated_text
 
     def _get_valid_start_state(self, start):
-        """Get a valid starting state, either the provided one or a random one"""
-        # If start is None, choose randomly
+        """
+        Get a valid starting state from database storage, either the provided one or a random one.
+
+        Args:
+            start: The requested starting state or None for random
+
+        Returns:
+            A valid starting state from the database or None if unavailable
+        """
+        # If start is None or empty string, choose randomly
         if start is None:
-            if self.using_db and self.db_adapter:
-                return self.db_adapter.get_random_state(self.n_gram)
-            else:
-                return (
-                    random.choice(list(self.transitions.keys()))
-                    if self.transitions
-                    else None
-                )
+            return self.db_adapter.get_random_state(self.n_gram)
+
+        # Explicitly handle empty strings - they should not generate text
+        if isinstance(start, str) and start.strip() == "":
+            self.logger.warning(
+                "Empty string provided as start state - rejected")
+            return None
 
         # Process the provided start state
         if isinstance(start, str) and self.n_gram > 1:
@@ -1221,35 +1025,33 @@ class MarkovChain:
                 start = tuple(words[: self.n_gram])
             else:
                 # Not enough words, get a random state
-                if self.using_db and self.db_adapter:
-                    return self.db_adapter.get_random_state(self.n_gram)
-                else:
-                    return (
-                        random.choice(list(self.transitions.keys()))
-                        if self.transitions
-                        else None
-                    )
+                self.logger.warning("Not enough words in start state, using random state", extra={
+                    "metrics": {"words_provided": len(words), "words_required": self.n_gram}
+                })
+                return self.db_adapter.get_random_state(self.n_gram)
 
         # Validate that start exists in model
-        if self.using_db and self.db_adapter:
-            if not self.db_adapter.check_state_exists(start, self.n_gram):
-                return self.db_adapter.get_random_state(self.n_gram)
+        if isinstance(start, tuple):
+            db_state = " ".join(start)
         else:
-            if start not in self.transitions:
-                return (
-                    random.choice(list(self.transitions.keys()))
-                    if self.transitions
-                    else None
-                )
+            db_state = str(start)
 
+        if not self.db_adapter.check_state_exists(db_state, self.n_gram):
+            self.logger.warning("Requested start state not found in model, using random state", extra={
+                "metrics": {"requested_state": db_state}
+            })
+            return self.db_adapter.get_random_state(self.n_gram)
+
+        # Return the original tuple or string state
         return start
 
     def __del__(self):
         """Cleanup method to close database connections"""
-        if self.db_adapter:
+        if hasattr(self, 'db_adapter') and self.db_adapter:
             try:
                 self.db_adapter.close_connections()
-            except:
+            except Exception:
+                # Silent exception handling in destructor
                 pass
 
     def save_model(self, filepath):
@@ -1310,107 +1112,74 @@ class MarkovChain:
             # Create a new model instance
             model = cls(
                 n_gram=n_gram,
-                memory_threshold=memory_threshold,
                 db_config=db_config,
                 environment=environment,
                 logger=logger
             )
 
-            # Create an ONNX Runtime session to access the model
-            session_options = ort.SessionOptions()
-            session = ort.InferenceSession(
-                filepath, sess_options=session_options)
+            # Flag that we're doing an in-memory model initially
+            model.using_db = False
 
-            # Get the transition matrix
-            # Extract model inputs and outputs
-            input_name = session.get_inputs()[0].name
-            output_name = session.get_outputs()[0].name
+            # Set up default transitions and counts
+            transitions = defaultdict(lambda: defaultdict(int))
+            total_counts = defaultdict(int)
 
-            # Get model weights (transition matrix) - depends on ONNX model structure
-            # This assumes the exported model has weights stored in a node named 'transition_matrix'
+            # Extract weights from ONNX model
+            weights_tensor = None
+
+            # Search for the transition matrix in the ONNX model
             for node in onnx_model.graph.node:
-                if (node.op_type == 'Constant' and len(node.output) > 0 and
-                        node.output[0] == 'matrix'):
-                    # Extract the weights tensor
-                    weights_tensor = None
+                if node.op_type == 'Constant' and len(node.output) > 0 and node.output[0] == 'matrix':
                     for attr in node.attribute:
                         if attr.name == 'value':
                             weights_tensor = onnx.numpy_helper.to_array(attr.t)
                             break
 
-                    if weights_tensor is not None:
-                        # Convert matrix to dictionary format
-                        transitions = defaultdict(lambda: defaultdict(int))
-                        total_counts = defaultdict(int)
+            if weights_tensor is not None:
+                # Process transition matrix
+                vocab_size = weights_tensor.shape[0]
 
-                        # Get vocabulary size
-                        vocab_size = weights_tensor.shape[0]
+                # Convert weights to transitions dictionary
+                for i in range(vocab_size):
+                    if str(i) not in vocab_mapping:
+                        continue
 
-                        # Populate transitions and total_counts
-                        for i in vocab_size:
-                            if i not in idx_to_word:
-                                continue
+                    state = vocab_mapping[str(i)]
+                    state_vector = weights_tensor[i]
 
-                            state = idx_to_word[i]
-                            state_vector = weights_tensor[i]
+                    for j in range(vocab_size):
+                        if str(j) not in vocab_mapping or state_vector[j] <= 0:
+                            continue
 
-                            # Count total transitions for this state
-                            non_zero_transitions = np.where(
-                                state_vector > 0)[0]
-                            if len(non_zero_transitions) == 0:
-                                continue
+                        next_word = vocab_mapping[str(j)]
+                        probability = float(state_vector[j])
 
-                            # Calculate total based on probabilities
-                            # For simplicity, we'll normalize probabilities to counts
-                            # by using a base count of 100 for the most likely transition
-                            max_prob = np.max(state_vector)
-                            scaling_factor = 100 / max_prob if max_prob > 0 else 0
+                        # Convert probability to count using base of 100
+                        count = int(probability * 100)
+                        if count > 0:
+                            transitions[state][next_word] = count
+                            total_counts[state] += count
 
-                            for j in non_zero_transitions:
-                                if j not in idx_to_word:
-                                    continue
+                # Update model with transitions
+                model.transitions = transitions
+                model.total_counts = total_counts
 
-                                next_word = idx_to_word[j]
-                                probability = state_vector[j]
+                # Log successful loading
+                logger.info("ONNX model loaded successfully", extra={
+                    "metrics": {
+                        "filepath": filepath,
+                        "states_count": len(transitions),
+                        "transitions_count": sum(len(next_words) for next_words in transitions.values()),
+                        "n_gram": n_gram,
+                    }
+                })
 
-                                # Convert probability to count
-                                count = int(probability * scaling_factor)
-                                if count > 0:
-                                    transitions[state][next_word] = count
-                                    total_counts[state] += count
+                # Optionally convert to database storage if model is large
+                if db_config is not None and len(transitions) > memory_threshold:
+                    logger.info("Converting loaded model to database storage")
+                    model._store_model_in_db(transitions, total_counts)
 
-                        # Update model with the extracted transitions
-                        model.transitions = transitions
-                        model.total_counts = total_counts
-                        model.using_db = False
-
-                        # Log successful loading
-                        logger.info("ONNX model loaded successfully", extra={
-                            "metrics": {
-                                "filepath": filepath,
-                                "states_count": len(transitions),
-                                "n_gram": n_gram,
-                                "environment": environment,
-                            }
-                        })
-
-                        # Option to store in database if needed
-                        if db_config and len(transitions) > model.memory_threshold:
-                            logger.info(
-                                "Converting loaded model to database storage")
-                            model._store_model_in_db(transitions, total_counts)
-
-                        return model
-
-            # If we get here, we couldn't extract the transition matrix
-            logger.error("ONNX model loading failed", extra={
-                "metrics": {
-                    "filepath": filepath,
-                    "error": "Failed to extract transition matrix",
-                }
-            })
-
-            return None
+            return model  # Always return the model instance, even if empty
 
         except Exception as e:
             logger.error("ONNX model loading failed", extra={
@@ -1420,7 +1189,15 @@ class MarkovChain:
                     "error_type": type(e).__name__,
                 }
             })
-            return None
+
+            # Create an empty model as fallback
+            model = cls(
+                n_gram=1,
+                db_config=db_config,
+                environment=environment,
+                logger=logger
+            )
+            return model  # Return empty model instead of None on error
 
     def export_to_onnx(self, filepath):
         """
@@ -1697,6 +1474,9 @@ class MarkovChain:
         Args:
             transitions: Dictionary of transitions to store
             total_counts: Dictionary of total counts to store
+
+        Returns:
+            bool: True if successful, False otherwise
         """
         if not self.db_adapter:
             self.logger.warning(
@@ -1754,31 +1534,32 @@ class MarkovChain:
             batch_size = 1000
             for i in range(0, len(transitions_batch), batch_size):
                 batch = transitions_batch[i:i+batch_size]
-
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        f"""
-                        INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram)
-                        VALUES %s
-                    """,
-                        batch
-                    )
+                if batch:  # Only insert if there's data
+                    with conn.cursor() as cur:
+                        execute_values(
+                            cur,
+                            f"""
+                            INSERT INTO {table_prefix}_transitions (state, next_word, count, n_gram)
+                            VALUES %s
+                        """,
+                            batch
+                        )
 
             # Insert total counts in batches
             for i in range(0, len(total_counts_data), batch_size):
                 batch = total_counts_data[i:i+batch_size]
+                if batch:  # Only insert if there's data
+                    with conn.cursor() as cur:
+                        execute_values(
+                            cur,
+                            f"""
+                            INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
+                            VALUES %s
+                        """,
+                            batch
+                        )
 
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        f"""
-                        INSERT INTO {table_prefix}_total_counts (state, count, n_gram)
-                        VALUES %s
-                    """,
-                        batch
-                    )
-
+            # Commit all changes
             conn.commit()
 
             # Update model state
@@ -1786,6 +1567,7 @@ class MarkovChain:
             self.transitions.clear()
             self.total_counts.clear()
 
+            # Log success
             self.logger.info(
                 f"Successfully stored model in {self.environment} database")
             return True
@@ -1796,5 +1578,150 @@ class MarkovChain:
                 conn.rollback()
             return False
         finally:
-            # Return the connection when done
-            self.db_adapter.return_connection(conn)
+            # Always return the connection to the pool when done
+            if conn:
+                self.db_adapter.return_connection(conn)
+
+    def __getstate__(self):
+        """
+        Prepare object for pickle serialization by converting non-picklable attributes
+        to serializable formats.
+
+        Returns:
+            dict: State dictionary for pickle
+        """
+        state = self.__dict__.copy()
+
+        # Handle the database adapter which contains non-picklable connections
+        if 'db_adapter' in state:
+            # Store only the connection parameters, not the connection itself
+            if state['db_adapter'] is not None:
+                state['_db_config'] = getattr(
+                    state['db_adapter'], 'db_config', None)
+                state['_db_environment'] = getattr(
+                    state['db_adapter'], 'environment', None)
+
+            # Remove the adapter instance which contains the non-picklable connection
+            del state['db_adapter']
+
+        # Save logger reference flag to indicate it needs to be recreated
+        if 'logger' in state:
+            # We don't pickle the logger directly, but flag its existence
+            # so we know we need to restore it
+            state['_had_logger'] = state['logger'] is not None
+            del state['logger']
+
+        # Handle resource monitor which may have non-picklable elements
+        if 'resource_monitor' in state:
+            # No need to store this as it will be recreated
+            del state['resource_monitor']
+
+        # Handle preprocessor which may have non-picklable elements
+        if 'preprocessor' in state:
+            # No need to store this as it will be recreated
+            del state['preprocessor']
+
+        # Convert defaultdict with lambda to regular dictionaries for serialization
+        if 'transitions' in state:
+            # Convert nested defaultdict to regular nested dictionaries
+            regular_dict = {}
+            for state_key, next_words in state['transitions'].items():
+                regular_dict[state_key] = dict(next_words)
+            state['transitions'] = regular_dict
+
+        if 'total_counts' in state:
+            # Convert defaultdict to regular dictionary
+            state['total_counts'] = dict(state['total_counts'])
+
+        return state
+
+    def __setstate__(self, state):
+        """
+        Restore object after unpickling by recreating necessary attributes
+        including defaultdict structures.
+
+        Args:
+            state (dict): State dictionary from pickle
+        """
+        # Extract database config from the state
+        db_config = state.pop(
+            '_db_config', None) if '_db_config' in state else None
+        db_environment = state.pop(
+            '_db_environment', None) if '_db_environment' in state else 'development'
+
+        # Extract logger flag (if it was saved)
+        had_logger = state.pop('_had_logger', True)
+
+        # Convert regular dictionaries back to defaultdict with appropriate factory functions
+        if 'transitions' in state:
+            regular_dict = state['transitions']
+            nested_dict = defaultdict(lambda: defaultdict(int))
+
+            # Populate the nested defaultdict
+            for state_key, next_words in regular_dict.items():
+                for next_word, count in next_words.items():
+                    nested_dict[state_key][next_word] = count
+
+            state['transitions'] = nested_dict
+
+        if 'total_counts' in state:
+            regular_dict = state['total_counts']
+            counts_dict = defaultdict(int)
+
+            # Populate the defaultdict
+            for key, value in regular_dict.items():
+                counts_dict[key] = value
+
+            state['total_counts'] = counts_dict
+
+        # Restore the state
+        self.__dict__.update(state)
+
+        # Create a new logger immediately to ensure it's always present
+        # This ensures the attribute exists even if logging functionality isn't needed yet
+        from utils.loggers.json_logger import get_logger
+        self.logger = get_logger(f"markov_chain_{self.environment}")
+
+        # Recreate resource monitor
+        if not hasattr(self, 'resource_monitor') or self.resource_monitor is None:
+            from utils.system_monitoring import ResourceMonitor
+            self.resource_monitor = ResourceMonitor(
+                logger=self.logger,
+                monitoring_interval=10.0
+            )
+
+        # Recreate text preprocessor if needed
+        if not hasattr(self, 'preprocessor') or self.preprocessor is None:
+            try:
+                from data_preprocessing.text_preprocessor import TextPreprocessor
+                self.preprocessor = TextPreprocessor()
+                self.logger.info("TextPreprocessor recreated after unpickling")
+            except Exception as e:
+                self.preprocessor = None
+                self.logger.warning(
+                    f"Failed to recreate TextPreprocessor after unpickling: {str(e)}")
+
+        # Recreate database adapter if needed
+        if getattr(self, 'using_db', False) and db_config and not hasattr(self, 'db_adapter'):
+            try:
+                from utils.database_adapters.postgresql.markov_chain import MarkovChainPostgreSqlAdapter
+                self.db_adapter = MarkovChainPostgreSqlAdapter(
+                    environment=db_environment or self.environment,
+                    logger=self.logger,
+                    db_config=db_config
+                )
+
+                self.logger.info("Database adapter recreated after unpickling", extra={
+                    "metrics": {
+                        "environment": self.environment
+                    }
+                })
+            except Exception as e:
+                self.db_adapter = None
+                self.using_db = False
+                self.logger.warning(f"Failed to recreate database adapter after unpickling: {e}", extra={
+                    "metrics": {
+                        "error": str(e),
+                        "fallback": "in-memory only"
+                    }
+                })

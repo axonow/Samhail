@@ -1,185 +1,181 @@
+from datetime import datetime
+import os
 import logging
 import json
-import os
-from datetime import datetime
+import sys
 import inspect
 
 # Configure JSON logging
+
+
 class JsonLogger(logging.Formatter):
     """Formatter that outputs JSON strings after parsing the log record."""
 
     def format(self, record):
-        logobj = {}
-        logobj["timestamp"] = datetime.utcnow().isoformat()
-        logobj["name"] = record.name
-        logobj["level"] = record.levelname
-        logobj["module"] = record.module
-        logobj["function"] = record.funcName
-        logobj["message"] = record.getMessage()
+        """
+        Format the log record as a JSON string.
+
+        Args:
+            record: The log record to format
+
+        Returns:
+            str: JSON formatted log string
+        """
+        log_data = {
+            'timestamp': datetime.now().isoformat(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'path': record.pathname,
+            'line': record.lineno,
+            'function': record.funcName
+        }
+
+        # Include extra data if available
+        if hasattr(record, 'metrics'):
+            log_data['metrics'] = record.metrics
 
         # Include exception info if available
         if record.exc_info:
-            logobj["exception"] = {
-                "type": record.exc_info[0].__name__,
-                "message": str(record.exc_info[1]),
+            log_data['exception'] = {
+                'type': str(record.exc_info[0].__name__),
+                'message': str(record.exc_info[1]),
+                'traceback': self.formatException(record.exc_info)
             }
 
-        # Include any extra attributes
-        if hasattr(record, "metrics"):
-            logobj["metrics"] = record.metrics
-
-        if hasattr(record, "model_id"):
-            logobj["model_id"] = record.model_id
-
-        if hasattr(record, "operation"):
-            logobj["operation"] = record.operation
-
-        return json.dumps(logobj)
+        return json.dumps(log_data)
 
 
 def get_project_root():
     """
-    Get the project root directory (Samhail directory)
-    
+    Get the absolute path to the project root directory.
+
     Returns:
-        str: Path to project root
+        str: Path to project root directory
     """
     # Start with the current file's directory
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    
-    # Navigate up until we find the project root (where Samhail is the directory name)
-    while os.path.basename(current_path) != "Samhail" and current_path != os.path.dirname(current_path):
-        current_path = os.path.dirname(current_path)
-    
-    # Return the project root path
-    return current_path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Navigate up to the project root (2 levels up from loggers)
+    project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
+
+    return project_root
 
 
 def setup_log_file(log_file_path):
     """
-    Creates or clears the log file.
-    Ensures the directory exists and recreates the file.
+    Set up a log file with proper directory structure.
 
     Args:
         log_file_path (str): Path to the log file
 
     Returns:
-        str: Path to the created log file
+        str: Absolute path to the log file
     """
-    # Get directory from file path
+    # Ensure the directory exists
     log_dir = os.path.dirname(log_file_path)
-
-    # Create directory if it doesn't exist
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    # Create or overwrite the log file
-    with open(log_file_path, "w") as f:
-        f.write(f"# Log started on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    if not os.path.exists(log_dir):
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except Exception as e:
+            print(f"Error creating log directory {log_dir}: {e}")
+            # Fall back to a temporary directory
+            log_file_path = os.path.join(
+                '/tmp', os.path.basename(log_file_path))
 
     return log_file_path
 
 
 def determine_log_path(log_file=None):
     """
-    Determine the appropriate log file path based on caller module
-    
+    Determine the path for the log file.
+
     Args:
-        log_file (str, optional): Explicit log file path
-        
+        log_file (str, optional): Specific log file path
+
     Returns:
-        str: The determined log file path
+        str: Path to use for logging
     """
-    # If an explicit log file path is provided, use it
     if log_file:
-        return os.path.abspath(log_file)
-        
-    # Get the caller's module file path
-    frame = inspect.stack()[2]
-    caller_file = frame.filename
-    
-    # Get relative path from project root
+        # Use the specified log file
+        return setup_log_file(log_file)
+
+    # Default log file in project logs directory
     project_root = get_project_root()
-    if project_root in caller_file:
-        relative_path = os.path.relpath(caller_file, project_root)
-        # Remove file extension and get directory
-        file_dir = os.path.dirname(relative_path)
-        file_name = os.path.splitext(os.path.basename(relative_path))[0]
-        
-        # Create log path: logs/[module_dir]/[filename].log
-        log_path = os.path.join(project_root, "logs", file_dir, f"{file_name}.log")
-    else:
-        # Default to logs/default.log if caller is outside project
-        log_path = os.path.join(project_root, "logs", "default.log")
-    
-    return log_path
+    log_dir = os.path.join(project_root, 'logs')
+
+    # Create a timestamp-based log file name
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    default_log_file = os.path.join(log_dir, f"samhail_{timestamp}.log")
+
+    return setup_log_file(default_log_file)
 
 
-def get_logger(logger_name, log_file=None, clear_existing=True):
+def get_logger(logger_name, log_file=None, clear_existing=True, console_json=True):
     """
-    Create and configure a logger with JSON formatting.
-    
-    If log_file is not provided, generates a log path based on the calling module's location.
-    For example, if called from models/production_models/markov_chain/train_and_export.py,
-    the log file will be created at logs/models/production_models/markov_chain/train_and_export.log
+    Get a configured logger instance with JSON formatting.
 
     Args:
-        logger_name (str): Name of the logger
-        log_file (str, optional): Path to log file if file logging is desired
-        clear_existing (bool): Whether to clear existing log file (default: True)
+        logger_name (str): Name for the logger
+        log_file (str, optional): Path to the log file
+        clear_existing (bool): Whether to clear existing handlers
+        console_json (bool): Whether to use JSON formatting for console output
 
     Returns:
         logging.Logger: Configured logger instance
     """
-    # Determine the log file path
-    log_path = determine_log_path(log_file)
-    
-    # Create logger with JSON formatter
+    # Get logger by name
     logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-    
-    # Remove existing handlers if any
+
+    # Set level to DEBUG by default
+    logger.setLevel(logging.DEBUG)
+
+    # Clear existing handlers if requested
+    if clear_existing and logger.handlers:
+        logger.handlers.clear()
+
+    # If logger already has handlers, return it
     if logger.handlers:
-        for handler in logger.handlers[:]:
-            logger.removeHandler(handler)
-            
-    # Create console handler with JSON formatter
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(JsonLogger())
+        return logger
+
+    # Create console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+
+    # Use JSON formatting for console if requested
+    if console_json:
+        console_handler.setFormatter(JsonLogger())
+    else:
+        # Use regular text formatting for console
+        console_formatter = logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        console_handler.setFormatter(console_formatter)
+
     logger.addHandler(console_handler)
 
-    # Add file handler for persistent logs
-    try:
-        # Setup log file (create directory and clear file if requested)
-        if clear_existing:
-            setup_log_file(log_path)
-        elif not os.path.exists(os.path.dirname(log_path)) and os.path.dirname(log_path):
-            os.makedirs(os.path.dirname(log_path))
-
+    # Create file handler with JSON formatting if log file specified
+    if log_file is not None:
+        log_path = determine_log_path(log_file)
         file_handler = logging.FileHandler(log_path)
+        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(JsonLogger())
         logger.addHandler(file_handler)
-        logger.info(f"JSON logging initialized to {log_path}")
-    except (IOError, PermissionError) as e:
-        # Log to console if file logging fails
-        logger.error(f"Could not create log file {log_path}: {e}")
 
     return logger
 
 
 def log_json(logger, message, data=None):
     """
-    Directly log a JSON-formatted message with optional data.
-    This is a helper function to consistently log structured data.
+    Log a message with optional JSON data.
 
     Args:
-        logger: The logger instance to use
+        logger (logging.Logger): Logger instance
         message (str): Log message
         data (dict, optional): Data to include in the log
     """
-    extra = {}
-
-    if data:
-        extra["metrics"] = data
-
-    logger.info(message, extra=extra)
+    if data is None:
+        logger.info(message)
+    else:
+        logger.info(message, extra={"metrics": data})
