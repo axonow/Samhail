@@ -113,7 +113,7 @@ pytz==2025.2
 PyYAML==6.0.2
 pyzmq==26.4.0
 regex==2024.11.6
-requests==2.32.3
+requests==2.32.4
 rich==14.0.0
 safetensors==0.5.3
 scikit-learn==1.6.1
